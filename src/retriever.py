@@ -1,7 +1,10 @@
 import config
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.retrievers import EnsembleRetriever
+try:
+    from langchain.retrievers import EnsembleRetriever
+except ImportError:
+    from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 import os
 
@@ -39,15 +42,39 @@ class Retriever:
             print("Warning: pythainlp not installed. Falling back to default split.")
             return BM25Retriever.from_documents(docs)
 
+    @staticmethod
+    def detect_target_law(query):
+        """
+        ตรวจจับชื่อกฎหมายจากคำถามแบบ generic (ใช้ regex แทน list ตายตัว)
+        คืนค่า fragment ของชื่อกฎหมาย เช่น 'ธุรกิจสถาบันการเงิน' หรือ None
+        """
+        import re
+        is_asking_which_law = any(phrase in query for phrase in ["กฎหมายใด", "กฎหมายฉบับใด", "พ.ร.บ. ใด", "พระราชบัญญัติใด"])
+        if is_asking_which_law:
+            return None
+
+        # จับข้อความต่อจากคำว่า พระราชบัญญัติ / พ.ร.บ. / พระราชกฤษฎีกา / กฎกระทรวง เช่น "พระราชบัญญัติธุรกิจสถาบันการเงิน"
+        m = re.search(
+            r'(?:พระราชบัญญัติ|พ\.?ร\.?บ\.?|พระราชกฤษฎีกา|พ\.?ร\.?ฎ\.?|กฎกระทรวง)\s*([\u0E00-\u0E7F]{4,40})',
+            query
+        )
+        if m:
+            fragment = m.group(1).strip()
+            # ตัดคำหลังท้ายที่เป็นเงื่อนไข เช่น "พ.ศ. 2551" / "นั้น" / "ได้ไหม"
+            fragment = re.split(r'\s+(?:พ\.?ศ\.?|นั้น|นี้|ได้|หรือ|ไหม|มั้ย)', fragment)[0].strip()
+            # ตัดคำนำหน้าที่เป็นประเภทกฎหมายออกให้เหลือแต่ core name
+            for prefix in ("พระราชบัญญัติ", "พระราชกฤษฎีกา", "กฎกระทรวง", "ว่าด้วย"):
+                if fragment.startswith(prefix):
+                    fragment = fragment[len(prefix):].strip()
+            return fragment if len(fragment) >= 4 else None
+        return None
+
     def retrieve(self, query, filter_metadata=None):
         """
         Retrieves documents using True Hybrid Search (RRF with Vector + Thai BM25).
+        `query` ควรเป็น standalone query (ถ้ามีประวัติแชท ให้ rewrite ก่อนส่งเข้ามา)
         """
-        # 0. Context Injection for Short/Vague Queries
         search_query = query
-        generic_keywords = ["สถาบันการเงิน", "ธนาคาร", "พระราชบัญญัติ", "พ.ร.บ.", "เงินทุน", "เครดิต", "หลักทรัพย์"]
-        if not any(k in query for k in generic_keywords):
-            search_query = query + " (อ้างอิงพระราชบัญญัติธุรกิจสถาบันการเงินและธนาคารพาณิชย์)"
 
         # 1. Semantic Search (Vector) - ดึงฐานข้อมูลมาเยอะขึ้นเพื่อให้แน่ใจว่าไม่พลาดมาตราสำคัญ
         core_vector_docs = self.core_db.similarity_search(search_query, k=300, filter=filter_metadata)
@@ -67,31 +94,18 @@ class Retriever:
                 except Exception:
                     pass
 
-        # 2. Extract Target Law for Hard Filtering
-        is_asking_which_law = any(phrase in query for phrase in ["กฎหมายใด", "กฎหมายฉบับใด", "พ.ร.บ. ใด", "พระราชบัญญัติใด"])
-        target_law = None
-        
-        if not is_asking_which_law:
-            core_law_hints = [
-                "ธุรกิจสถาบันการเงิน", 
-                "ธุรกิจเงินทุน",
-                "หลักทรัพย์",
-                "ธนาคารแห่งประเทศไทย",
-                "ธนาคารออมสิน",
-                "สถาบันคุ้มครองเงินฝาก"
-            ]
-            for law in core_law_hints:
-                if law in query:
-                    target_law = law
-                    break
+        # 2. Extract Target Law for Hard Filtering (generic regex-based detection)
+        target_law = self.detect_target_law(query)
 
-        # HARD FILTERING (กำจัดเอกสารขยะ เช่น คดีล้มละลายที่บังเอิญติดมา)
         if target_law:
-            strict_matched_docs = [doc for doc in all_vector_docs if target_law in doc.metadata.get('title', '')]
+            # เผื่อ regex จับ fragment ยาวเกิน: ใช้ fuzzy contains ทั้งสองทาง
+            def law_matches(title):
+                return target_law in title or title in target_law
+            strict_matched_docs = [doc for doc in all_vector_docs if law_matches(doc.metadata.get('title', ''))]
             # ถ้ามีเอกสารที่ตรงกับชื่อกฎหมายที่ถามจริงๆ ให้ใช้เฉพาะกลุ่มนี้เท่านั้น ห้ามเอาขยะมาปน
             if len(strict_matched_docs) > 0:
                 all_vector_docs = strict_matched_docs
-        
+
         # 3. Thai-Aware BM25 Reranking & Reciprocal Rank Fusion (RRF)
         vector_ranks = {doc.page_content: i for i, doc in enumerate(all_vector_docs)}
         
@@ -114,7 +128,7 @@ class Retriever:
             score = (1.0 / (60 + vr)) + (1.0 / (60 + br))
             
             # Soft boost กรณีไม่มี Hard Filtering
-            if target_law and target_law in doc.metadata.get('title', ''):
+            if target_law and (target_law in doc.metadata.get('title', '') or doc.metadata.get('title', '') in target_law):
                 score *= 1.5
                 
             scores[content] = score

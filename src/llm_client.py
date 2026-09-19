@@ -37,11 +37,23 @@ Answer format:
         self.prompt = ChatPromptTemplate.from_template(template)
         self.chain = self.prompt | self.llm | StrOutputParser()
         
-    def generate_answer(self, question, documents):
+    def generate_answer(self, question, documents, history=None):
         # Format documents into a single string
         context_text = "\n\n".join([f"[เอกสารที่ {i+1}]: {doc.page_content}" for i, doc in enumerate(documents)])
-        
+
+        # ถ้ามีประวัติแชท (multi-turn) ให้แนบเป็นบริบทเสริมให้ LLM อ้างอิง
+        history_text = ""
+        if history:
+            lines = []
+            for m in history:
+                try:
+                    role = "ผู้ใช้" if m.__class__.__name__ == "HumanMessage" else "ผู้ช่วย"
+                except Exception:
+                    role = "ผู้ใช้"
+                lines.append(f"{role}: {m.content}")
+            history_text = "\nบทสนทนาก่อนหน้า (ใช้ประกอบการตอบ ห้ามตอบจากบทสนทนาแทน Context):\n" + "\n".join(lines) + "\n"
+
         return self.chain.invoke({
             "question": question,
-            "context": context_text
+            "context": context_text + history_text
         })

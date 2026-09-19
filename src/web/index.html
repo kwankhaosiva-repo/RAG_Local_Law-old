@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ผู้ช่วยกฎหมายไทย — Thai Legal RAG</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Sarabun", "Segoe UI", Tahoma, sans-serif;
+    background: linear-gradient(135deg, #1a2a4f 0%, #0f1a33 100%);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .chat-container {
+    width: 100%; max-width: 760px; height: 92vh;
+    background: #ffffff; border-radius: 16px;
+    display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0,0,0,.45);
+    overflow: hidden;
+  }
+  header {
+    background: #1e3a6e; color: #fff;
+    padding: 16px 20px; display: flex;
+    align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 1.05rem; font-weight: 600; }
+  header p { font-size: .75rem; opacity: .75; margin-top: 2px; }
+  #resetBtn {
+    background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35);
+    border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: .8rem;
+  }
+  #resetBtn:hover { background: rgba(255,255,255,.28); }
+  #chatBox { flex: 1; overflow-y: auto; padding: 20px; background: #f4f6fa; }
+  .msg { margin-bottom: 14px; display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 78%; padding: 11px 15px; border-radius: 14px;
+    line-height: 1.55; font-size: .92rem; white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .bubble { background: #1e3a6e; color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot  .bubble { background: #ffffff; border: 1px solid #e3e8f0; border-bottom-left-radius: 4px; }
+  .sources { margin-top: 8px; border-top: 1px dashed #d4dbe6; padding-top: 7px; font-size: .74rem; color: #62708a; }
+  .sources b { color: #3a4a66; }
+  .typing { display: inline-block; }
+  .typing::after { content: "…"; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  form {
+    display: flex; gap: 10px; padding: 14px;
+    border-top: 1px solid #e3e8f0; background: #fff;
+  }
+  #msgInput {
+    flex: 1; padding: 12px 15px; border: 1.5px solid #d4dbe6;
+    border-radius: 10px; font-size: .95rem; font-family: inherit; outline: none;
+  }
+  #msgInput:focus { border-color: #1e3a6e; }
+  button[type=submit] {
+    background: #1e3a6e; color: #fff; border: none; border-radius: 10px;
+    padding: 12px 22px; font-size: .95rem; cursor: pointer; font-family: inherit;
+  }
+  button[type=submit]:disabled { opacity: .55; cursor: default; }
+</style>
+</head>
+<body>
+<div class="chat-container">
+  <header>
+    <div>
+      <h1>⚖️ ผู้ช่วยกฎหมายไทย</h1>
+      <p>ถาม-ตอบกฎหมายไทยจากฐานข้อมูลราชกิจจานุเบกษา (RAG + Local LLM)</p>
+    </div>
+    <button id="resetBtn" title="เริ่มบทสนทนาใหม่">เริ่มใหม่</button>
+  </header>
+  <div id="chatBox">
+    <div class="msg bot"><div class="bubble">สวัสดีครับ 🙏 ผมคือผู้ช่วยตอบคำถามกฎหมายไทย
+สามารถถามเรื่องเงื่อนไขในกฎหมาย สิทธิ หน้าที่ หรือระบุชื่อกฎหมายและมาตราที่สงสัยได้เลยครับ</div></div>
+  </div>
+  <form id="chatForm">
+    <input id="msgInput" autocomplete="off" placeholder="พิมพ์คำถามกฎหมายของคุณ…">
+    <button type="submit">ส่ง</button>
+  </form>
+</div>
+
+<script>
+const chatBox = document.getElementById("chatBox");
+const form = document.getElementById("chatForm");
+const input = document.getElementById("msgInput");
+const resetBtn = document.getElementById("resetBtn");
+
+// session id แบบง่าย ติดตั้งไว้ใน sessionStorage
+let sessionId = sessionStorage.getItem("legal_session_id");
+if (!sessionId) {
+  sessionId = "web-" + Math.random().toString(36).slice(2, 10);
+  sessionStorage.setItem("legal_session_id", sessionId);
+}
+
+function addMsg(role, text, sources) {
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + role;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  if (sources && sources.length) {
+    const src = document.createElement("div");
+    src.className = "sources";
+    const items = sources.slice(0, 3).map(s =>
+      `📄 ${s.title}${s.section ? " " + s.section : ""}`
+    ).join("\n");
+    src.innerHTML = "<b>อ้างอิง:</b><br>" + items
+      .split("\n").map(l => l.replace(/</g, "&lt;")).join("<br>");
+    bubble.appendChild(src);
+  }
+  wrap.appendChild(bubble);
+  chatBox.appendChild(wrap);
+  chatBox.scrollTop = chatBox.scrollHeight;
+  return bubble;
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  addMsg("user", text);
+  const typing = addMsg("bot", "กำลังค้นคำตอบ", null);
+  typing.classList.add("typing");
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message: text }),
+    });
+    const data = await res.json();
+    typing.classList.remove("typing");
+    // เคลียร์ bubble แล้วใส่คำตอบจริง + sources
+    typing.textContent = data.answer || "ไม่ได้รับคำตอบจากระบบ";
+    if (data.sources && data.sources.length) {
+      const src = document.createElement("div");
+      src.className = "sources";
+      const lines = data.sources.slice(0, 3).map(s =>
+        `📄 ${escapeHtml(s.title || "")}${s.section ? " " + escapeHtml(s.section) : ""}`
+      );
+      src.innerHTML = "<b>อ้างอิง:</b><br>" + lines.join("<br>");
+      typing.appendChild(src);
+    }
+    chatBox.scrollTop = chatBox.scrollHeight;
+  } catch (err) {
+    typing.classList.remove("typing");
+    typing.textContent = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: " + err;
+  }
+});
+
+resetBtn.addEventListener("click", async () => {
+  await fetch("/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, message: "" }),
+  });
+  chatBox.innerHTML = "";
+  addMsg("bot", "เริ่มบทสนทนาใหม่แล้วครับ 🙏 มีคำถามกฎหมายอะไรถามได้เลยครับ", null);
+});
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+</script>
+</body>
+</html>

@@ -8,6 +8,9 @@ langchain-community
 langchain-chroma
 langchain-huggingface
 langchain-ollama
+langgraph
+langgraph-checkpoint
+langgraph-checkpoint-sqlite
 chromadb>=1.5.0
 sentence-transformers
 transformers
@@ -19,3 +22,8 @@ tqdm
 fpdf
 chardet
 datasets
+fastapi
+uvicorn[standard]
+requests
+pymupdf
+schedule

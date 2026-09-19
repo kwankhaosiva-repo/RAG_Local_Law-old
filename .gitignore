@@ -2,3 +2,4 @@ datasets/
 chroma_db/
 .env
 src/__pycache__
+.freebuff/
