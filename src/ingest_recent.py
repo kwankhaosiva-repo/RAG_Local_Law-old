@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 import config
+from thai_law_splitter import split_law_chunks
 
 def get_hierarchy_metadata(title):
     title_lower = title.lower()
@@ -28,12 +29,6 @@ def load_jsonl_files(directory):
     print(f"Scanning for JSONL files in {directory}...")
     files = glob.glob(os.path.join(directory, "**/*.jsonl"), recursive=True)
     documents = []
-    
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=config.CHUNK_SIZE,
-        chunk_overlap=config.CHUNK_OVERLAP,
-        separators=["\n\n", "\n", " ", ""]
-    )
     
     for f in files:
         base_name = os.path.basename(f)
@@ -67,51 +62,25 @@ def load_jsonl_files(directory):
                         full_content = full_content.strip()
                         if not full_content: continue
                         
-                        # Support "มาตรา", "ข้อ", and their extensions (ทวิ, ตรี, ก, ฮ, etc.)
-                        pattern = r'((?:มาตรา|ข้อ)\s*[0-9๑-๙ก-ฮ\d\./]+(?:\s*(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฐ|นพ))?)'
-                        sections = re.split(pattern, full_content)
-                        
-                        if len(sections) > 1:
-                            for i in range(1, len(sections), 2):
-                                sec_header = sections[i].strip()
-                                sec_body = sections[i+1] if i+1 < len(sections) else ""
-                                
-                                chunks = text_splitter.split_text(sec_body)
-                                for j, chunk in enumerate(chunks):
-                                    chunk_header = f"กฎหมาย: {title}\nที่มา: IAPP {year_month}\nส่วนของ: {sec_header}"
-                                    if len(chunks) > 1:
-                                        chunk_header += f" (ส่วนที่ {j+1}/{len(chunks)})"
-                                        
-                                    chunk_text = f"{chunk_header}\nเนื้อหา: {chunk.strip()}"
-                                    metadata = {
-                                        "source": "iapp_2025",
-                                        "filename": data.get('pdf_file', raw_filename),
-                                        "title": title,
-                                        "section_header": sec_header,
-                                        "unit_type": unit_type,
-                                        "hierarchy_level": hierarchy_level,
-                                        "publish_date": data.get('publishDate', year_month),
-                                        "category": data.get('category', 'New Law')
-                                    }
-                                    documents.append(Document(page_content=chunk_text, metadata=metadata))
-                        else:
-                            chunks = text_splitter.split_text(full_content)
-                            for j, chunk in enumerate(chunks):
-                                chunk_header = f"กฎหมาย: {title}\nที่มา: IAPP {year_month}"
-                                if len(chunks) > 1:
-                                    chunk_header += f" (ส่วนที่ {j+1}/{len(chunks)})"
-                                    
-                                chunk_text = f"{chunk_header}\nเนื้อหา: {chunk.strip()}"
-                                metadata = {
-                                    "source": "iapp_2025",
-                                    "filename": data.get('pdf_file', raw_filename),
-                                    "title": title,
-                                    "unit_type": unit_type,
-                                    "hierarchy_level": hierarchy_level,
-                                    "publish_date": data.get('publishDate', year_month),
-                                    "category": data.get('category', 'New Law')
-                                }
-                                documents.append(Document(page_content=chunk_text, metadata=metadata))
+                        # thai_law_splitter: จับ "มาตรา/มาตราที่/ข้อที่" ครบทุก variant
+                        # และทุก chunk มีหัวมาตราติดอยู่เสมอ (แก้ปัญหา truncation)
+                        docs = split_law_chunks(
+                            full_content,
+                            chunk_size=config.CHUNK_SIZE,
+                            chunk_overlap=config.CHUNK_OVERLAP,
+                            title=title,
+                            source_note=f"IAPP {year_month}",
+                            extra_metadata={
+                                "source": "iapp_2025",
+                                "filename": data.get('pdf_file', raw_filename),
+                                "title": title,
+                                "unit_type": unit_type,
+                                "hierarchy_level": hierarchy_level,
+                                "publish_date": data.get('publishDate', year_month),
+                                "category": data.get('category', 'New Law')
+                            }
+                        )
+                        documents.extend(docs)
                                 
                     except json.JSONDecodeError:
                         continue
@@ -154,4 +123,3 @@ def ingest_recent_law():
 
 if __name__ == "__main__":
     ingest_recent_law()
-

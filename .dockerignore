@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments & secrets
+.env
+*.env
+!.env_example
+
+# Git
+.git/
+.gitignore
+
+# Datasets (ควร mount/sync แยก ไม่ใส่ image)
+datasets/
+!datasets/.gitkeep
+
+# Vector DB (mount เป็น volume หรือ COPY แยกตอน build ถ้าต้องการ)
+chroma_db/
+
+# Docs & misc
+README.md
+gcp_deploy.txt
+*.md
+Dockerfile
+.dockerignore
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Term sessions DB
+*.sqlite
+*.sqlite3

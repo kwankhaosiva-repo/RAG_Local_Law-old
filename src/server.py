@@ -3,7 +3,10 @@ FastAPI Web Chat Server for Thai Legal RAG
 - POST /chat    : {session_id, message} -> {answer, sources}
 - POST /reset   : ล้างประวัติห้องแชท
 - GET  /        : หน้าเว็บแชท
+- POST /line/webhook     : LINE Messaging API (ดู line_bot.py)
 - POST /openclaw/webhook : จุดเชื่อม OpenClaw gateway (ดู openclaw_bridge.py)
+
+Discord รันแยก process: python src/discord_bot.py
 """
 import warnings
 
@@ -15,22 +18,12 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import config
-from agent import LegalAgent
+import runtime
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="Thai Legal RAG Chatbot")
-
-# สร้าง agent ครั้งเดียวตอน startup (โหลด embeddings + LLM)
-_agent = None
-
-
-def get_agent() -> LegalAgent:
-    global _agent
-    if _agent is None:
-        _agent = LegalAgent()
-    return _agent
 
 
 class ChatRequest(BaseModel):
@@ -50,9 +43,8 @@ def index():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    agent = get_agent()
     try:
-        out = agent.chat(req.session_id.strip(), req.message.strip())
+        out = runtime.ask(req.message.strip(), req.session_id.strip())
         return ChatResponse(answer=out["answer"], sources=out["sources"])
     except Exception as e:
         return ChatResponse(
@@ -62,11 +54,19 @@ def chat(req: ChatRequest):
 
 @app.post("/reset")
 def reset(req: ChatRequest):
-    get_agent().reset(req.session_id.strip())
+    runtime.reset(req.session_id.strip())
     return {"ok": True}
 
 
-# --- OpenClaw Gateway Bridge (ถ้ามีไฟล์ bridge ให้ mount) ---
+# --- Optional channel routers (mount ถ้ามีไฟล์) ---
+try:
+    from line_bot import line_router
+
+    app.include_router(line_router)
+    print("LINE bot mounted at /line/webhook")
+except ImportError:
+    pass
+
 try:
     from openclaw_bridge import openclaw_router
 

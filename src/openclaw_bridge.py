@@ -20,20 +20,11 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import config
-from agent import LegalAgent
+import runtime
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 openclaw_router = APIRouter()
-
-_agent = None
-
-
-def get_agent() -> LegalAgent:
-    global _agent
-    if _agent is None:
-        _agent = LegalAgent()
-    return _agent
 
 
 class OpenClawMessage(BaseModel):
@@ -49,7 +40,7 @@ class OpenClawReply(BaseModel):
 def handle_openclaw_message(chat_id: str, text: str) -> dict:
     """จุดเดียวที่ปรับ format ได้ตาม adapter ฝั่ง OpenClaw"""
     session_id = f"openclaw-{chat_id}"
-    out = get_agent().chat(session_id, text.strip())
+    out = runtime.ask(text.strip(), session_id)
     reply = out["answer"]
     if out["sources"]:
         refs = "\n".join(

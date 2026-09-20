@@ -166,58 +166,22 @@ def get_hierarchy_metadata(title):
 
 
 def build_documents(title, publish_date, full_content):
-    """แบ่งเนื้อหาตามมาตรา/ข้อ แล้วสร้าง LangChain Documents พร้อม metadata"""
-    from langchain_core.documents import Document
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    """แบ่งเนื้อหาตามมาตรา/ข้อ ด้วย thai_law_splitter (ทุก chunk มีหัวมาตราติดอยู่เสมอ)"""
+    from thai_law_splitter import split_law_chunks
 
-    hierarchy_level, unit_type = get_hierarchy_metadata(title)
-    text_splitter = RecursiveCharacterTextSplitter(
+    return split_law_chunks(
+        full_content,
         chunk_size=config.CHUNK_SIZE,
         chunk_overlap=config.CHUNK_OVERLAP,
-        separators=["\n\n", "\n", " ", ""],
+        title=title,
+        source_note=f"ราชกิจจานุเบกษา {publish_date}",
+        extra_metadata={
+            "source": "ratchakitcha",
+            "title": title,
+            "publish_date": publish_date,
+            "category": "Crawler Update",
+        },
     )
-
-    pattern = r'((?:มาตรา|ข้อ)\s*[0-9๑-๙\d\./]+(?:\s*(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฐ|นพ))?)'
-    sections = re.split(pattern, full_content)
-    documents = []
-
-    if len(sections) > 1:
-        for i in range(1, len(sections), 2):
-            sec_header = sections[i].strip()
-            sec_body = sections[i + 1] if i + 1 < len(sections) else ""
-            chunks = text_splitter.split_text(sec_body)
-            for j, chunk in enumerate(chunks):
-                header = f"กฎหมาย: {title}\nที่มา: ราชกิจจานุเบกษา {publish_date}\nส่วนของ: {sec_header}"
-                if len(chunks) > 1:
-                    header += f" (ส่วนที่ {j+1}/{len(chunks)})"
-                chunk_text = f"{header}\nเนื้อหา: {chunk.strip()}"
-                metadata = {
-                    "source": "ratchakitcha",
-                    "title": title,
-                    "section_header": sec_header,
-                    "unit_type": unit_type,
-                    "hierarchy_level": hierarchy_level,
-                    "publish_date": publish_date,
-                    "category": "Crawler Update",
-                }
-                documents.append(Document(page_content=chunk_text, metadata=metadata))
-    else:
-        chunks = text_splitter.split_text(full_content)
-        for j, chunk in enumerate(chunks):
-            header = f"กฎหมาย: {title}\nที่มา: ราชกิจจานุเบกษา {publish_date}"
-            if len(chunks) > 1:
-                header += f" (ส่วนที่ {j+1}/{len(chunks)})"
-            chunk_text = f"{header}\nเนื้อหา: {chunk.strip()}"
-            metadata = {
-                "source": "ratchakitcha",
-                "title": title,
-                "unit_type": unit_type,
-                "hierarchy_level": hierarchy_level,
-                "publish_date": publish_date,
-                "category": "Crawler Update",
-            }
-            documents.append(Document(page_content=chunk_text, metadata=metadata))
-    return documents
 
 
 def ingest_documents(documents):

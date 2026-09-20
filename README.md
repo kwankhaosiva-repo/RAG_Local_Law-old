@@ -1,18 +1,23 @@
 # Thai Legal RAG Chatbot
 
-โปรเจกต์นี้เป็น **แชทบอทตอบคำถามกฎหมายไทย** ที่พัฒนาต่อยอดจากระบบ Retrieval-Augmented Generation (RAG) เดิม — คุยได้หลายเทิร์น (จำ context ต่อเนื่อง), ตอบพร้อมอ้างอิงมาตรา/ชื่อกฎหมาย, และ **อัปเดตกฎหมายใหม่จากราชกิจจานุเบกษาอัตโนมัติทุกสัปดาห์**
+โปรเจกต์นี้เป็น **แชทบอทตอบคำถามกฎหมายไทยแบบหลายช่องทาง (Multi-channel)** — Web, LINE, Discord, OpenClaw และ CLI — คุยได้หลายเทิร์น (จำ context ต่อเนื่อง), ตอบพร้อมอ้างอิงมาตรา/ชื่อกฎหมาย, รองรับ **LLM ทั้ง local (Ollama) และ cloud (OpenAI/Anthropic/Google/OpenRouter)** และ **อัปเดตกฎหมายใหม่จากราชกิจจานุเบกษาอัตโนมัติทุกสัปดาห์**
 
 ---
 
 ## สถาปัตยกรรมระบบ (System Architecture)
 
 ```
-ผู้ใช้ ──> Web Chat UI (FastAPI) ──┐
-LINE/Telegram (ผ่าน OpenClaw) ──┼──> LangGraph Agent ──> Retriever (Hybrid RRF) ──> Ollama LLM
-CLI (python src/main.py) ──┘         │
-                                     └──> ChromaDB (core_law + recent_law)
-                                              ▲
-                              Ratchakitcha Crawler (อัตโนมัติทุกสัปดาห์)
+ผู้ใช้ ──> Web Chat UI (FastAPI /) ─────────┐
+       ──> LINE Messaging API (/line/webhook) ├─> runtime (shared agent) ──> LangGraph Agent
+       ──> OpenClaw Gateway (/openclaw/webhook)┘                                    │
+       ──> Discord Bot (แยก process) ───────────────────────────────────────────────┤
+       ──> CLI (python src/main.py) ────────────────────────────────────────────────┤
+                                                                                    ▼
+                                                              Retriever (Hybrid RRF: Vector + Thai BM25)
+                                                                                    │
+                                                                    ChromaDB (core_law + recent_law)
+                                                                                    ▲
+                                                       Ratchakitcha Crawler (อัตโนมัติทุกสัปดาห์)
 ```
 
 ### 1. LangGraph Conversation Agent (`src/agent.py`) — สมองของแชทบอท
@@ -20,32 +25,51 @@ CLI (python src/main.py) ──┘         │
 
 *   **Route Intent:** แยกว่าเป็น "คำถามกฎหมาย" (→ ค้นฐานกฎหมาย) หรือ "คุยทั่วไป" (→ ตอบแบบแชทสุภาพ ไม่ต้องค้น)
 *   **Query Rewrite:** คำถามในเทิร์นต่อๆ มา (เช่น "แล้วมาตราถัดไปล่ะ") จะถูก LLM รวมกับประวัติแชทให้เป็นคำถามสมบูรณ์ก่อนค้น — **แทนการฉีดชื่อกฎหมายตายตัวแบบเดิม**
-*   **Hybrid Retrieval + Doc Grading:** ดึงเอกสารด้วย Vector + BM25 + RRF เหมือนเดิม แล้วให้ LLM ตรวจก่อนว่าเนื้อหาตอบคำถามได้จริงไหม — ถ้าไม่ จะตอบอย่างสุภาพว่าไม่พบข้อมูล (ลด hallucination)
+*   **Hybrid Retrieval + Doc Grading:** ดึงเอกสารด้วย Vector + BM25 + RRF แล้วให้ LLM ตรวจก่อนว่าเนื้อหาตอบคำถามได้จริงไหม — ถ้าไม่ จะตอบอย่างสุภาพว่าไม่พบข้อมูล (ลด hallucination)
 *   **Multi-turn Memory:** เก็บประวัติต่อ session ด้วย `SqliteSaver` (LangGraph checkpointer) — คุยต่อเนื่องได้โดยส่งแค่ `session_id`
 
-### 2. Data Ingestion (การนำเข้าข้อมูล)
-*   **Hybrid Chunking Strategy:** ใช้ RegEx แยกกลุ่มตาม "หัวมาตรา" (มาตรา/ข้อ) ก่อน แล้วซอยด้วย `RecursiveCharacterTextSplitter`
-*   **Hierarchical Metadata:** `title`, `section_id`, `hierarchy_level` (ลำดับศักดิ์ของกฎหมาย), `publish_date` ฝังในทุก Chunk
+### 2. Multi-channel Chat (ทุกช่องทางใช้ agent ตัวเดียวกันผ่าน `src/runtime.py`)
+
+| ช่องทาง | ไฟล์ | วิธีรัน | หมายเหตุ |
+|---|---|---|---|
+| **Web Chat** | `src/server.py` + `src/web/index.html` | `python src/server.py` → http://localhost:8000 | มี `POST /chat`, `POST /reset`, หน้าเว็บแชทไทย |
+| **LINE** | `src/line_bot.py` | mount ใน server อัตโนมัติ | webhook `POST /line/webhook`, ตรวจ `X-Line-Signature`, แบ่งข้อความยาวเป็นหลาย bubble, คำสั่ง `ล้างแชท` |
+| **Discord** | `src/discord_bot.py` | `python src/discord_bot.py` (แยก process) | `!ask <คำถาม>`, mention บอท, slash `/law`, ต่อ session ต่อ channel |
+| **OpenClaw** | `src/openclaw_bridge.py` | mount ใน server อัตโนมัติ | webhook `POST /openclaw/webhook` + secret auth |
+| **CLI** | `src/main.py` | `python src/main.py` | คำสั่ง `reset`, `exit` |
+
+ทุก adapter เรียก `runtime.ask(text, session_id)` / `runtime.reset(session_id)` — agent โหลดครั้งเดียวต่อ process ใช้ร่วมกันทุกช่องทาง
+
+### 3. Data Ingestion (การนำเข้าข้อมูล)
+*   **Thai Law Section Splitter (ใหม่):** `src/thai_law_splitter.py` แก้ปัญหา truncation ของหัวมาตรา:
+    *   จับรูปแบบครบ: `มาตรา 5`, `มาตราที่ 7/1`, `มาตรา ๓๙` (เลขไทย), `ข้อที่ 5`, คำเกิน (ทวิ/ตรี/จัตวา)
+    *   **ไม่มีการตัดกลางคำ** — chunk ที่ซอยต่อจากมาตรายาวๆ จะมี header "ส่วนของ: มาตรา X (ส่วนที่ n/m)" ติดทุก chunk
+    *   วิธีเดิม regex จับ "มาตราที่ 7/1" ได้เพี้ยนเป็น "มาตราท" (ตัดกลางคำ) และ chunk ที่ 2..n ของมาตราเดียวกันหายหัวมาตรา — ตรวจสอบด้วย `python src/test_section_splitter.py` (ALL TESTS PASSED ✅)
+*   **Hierarchical Metadata:** `title`, `section_id`, `hierarchy_level`, `publish_date` ฝังในทุก Chunk
 *   **Prefix Context Injection:** ชื่อกฎหมาย+มาตราแปะหัวทุก Chunk เสมอ
-*   **Generic Law Detection (ใหม่):** Retriever ตรวจจับชื่อกฎหมายจากคำถามด้วย regex (`detect_target_law`) แทน list ตายตัว — รองรับกฎหมายทุกฉบับที่อยู่ในฐาน
+*   **Generic Law Detection:** Retriever ตรวจจับชื่อกฎหมายจากคำถามด้วย regex (`detect_target_law`) รองรับกฎหมายทุกฉบับ
 
-### 3. Web Chat UI + API (`src/server.py`, `src/web/index.html`)
-*   `POST /chat` — `{session_id, message}` → `{answer, sources[]}` (ชื่อกฎหมาย + มาตรา + วันประกาศ)
-*   `POST /reset` — ล้างประวัติห้องแชท
-*   `GET /` — หน้าเว็บแชทภาษาไทย แสดงฟองแชท + แหล่งอ้างอิงใต้คำตอบ
+### 4. LLM รองรับหลาย Provider (`src/llm_client.py`)
+ตั้งผ่าน `.env` (ดู `.env_example`):
 
-### 4. OpenClaw Gateway Bridge (`src/openclaw_bridge.py`)
-เปิด endpoint `POST /openclaw/webhook` รับ payload `{chat_id, text}` จาก [OpenClaw](https://github.com/openclaw/openclaw) (open-source agent gateway) เพื่อเปิดช่องทาง **LINE / Telegram / WhatsApp / Discord** โดยไม่ต้องแก้ agent — แค่ชี้ webhook ของ OpenClaw มาที่ endpoint นี้ (รองรับ shared secret ผ่าน env `OPENCLAW_SECRET` + header `X-OpenClaw-Secret`)
+| Provider | env | โมเดลแนะนำ |
+|---|---|---|
+| **Ollama (local, default)** | `LLM_PROVIDER=ollama` + `OLLAMA_HOST` + `LLM_MODEL_NAME` | llama3.2 |
+| **OpenAI** | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` | gpt-4o-mini |
+| **Anthropic** | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` | claude-3-5-haiku |
+| **Google** | `LLM_PROVIDER=google` + `GOOGLE_API_KEY` | gemini-2.0-flash |
+| **OpenRouter** | `LLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | openai/gpt-4o-mini |
+
+สลับ provider ได้โดยไม่แก้โค้ด — เหมาะกับการ deploy บน cloud ที่ไม่มี GPU
 
 ### 5. Ratchakitcha Crawler (`src/crawl_ratchakitcha.py`) — อัปเดตกฎหมายใหม่อัตโนมัติ
 *   ดึงรายการประกาศใหม่จาก **Web Service ทางการของราชกิจจานุเบกษา** (`api.soc.go.th`) กรองเฉพาะ พ.ร.บ. / พ.ร.ฎ. / กฎกระทรวง / ประกาศ / ระเบียบ
-*   โหลด PDF → extract ข้อความ (PyMuPDF) → แบ่งตามมาตรา/ข้อ → ingest เข้า collection `recent_law`
+*   โหลด PDF → extract ข้อความ (PyMuPDF) → แบ่งตามมาตรา/ข้อ (ด้วย splitter ใหม่) → ingest เข้า collection `recent_law`
 *   **Deduplicate:** hash (title + วันประกาศ) ใน SQLite กัน ingest ซ้ำ
 *   รันครั้งเดียว: `python src/crawl_ratchakitcha.py` | รันต่อเนื่องทุกสัปดาห์: `python src/crawl_ratchakitcha.py --weekly`
-*   *หมายเหตุ:* PDF ที่ไม่มี text layer (เป็นรูปภาพ) จะถูกข้ามไว้ให้ pipeline OCR ของ iapp_2025 จัดการ
 
 ### 6. Generation & Evaluation (คงเดิม)
-*   **Chain-of-Thought + Strict Polarity:** ยก quote ก่อนแล้ว "สรุป:" ฟันธงชัดเจน — คงระบบเดิมไว้สำหรับคำถามกฎหมาย
+*   **Chain-of-Thought + Strict Polarity:** ยก quote ก่อนแล้ว "สรุป:" ฟันธงชัดเจน
 *   **LLM-as-a-Judge:** `src/evaluate.py` ใช้ประเมิน accuracy ก่อน/หลังปรับระบบ
 
 ---
@@ -54,23 +78,39 @@ CLI (python src/main.py) ──┘         │
 
 ```bash
 pip install -r requirements.txt
-ollama pull llama3.2
+cp .env_example .env          # แล้วแก้ค่าตามที่ใช้ (LLM provider, LINE token ฯลฯ)
+ollama pull llama3.2          # ถ้าใช้ LLM local
 
 # 1) Ingest ฐานกฎหมาย (ครั้งแรก)
 python src/ingest_core.py
 python src/ingest_recent.py
 
-# 2) รันแชทบอท — เลือก 1 ใน 3 วิธี
+# 2) รันแชทบอท — เลือกช่องทางที่ต้องการ
+python src/server.py                    # Web + LINE + OpenClaw ใน process เดียว
+python src/discord_bot.py               # Discord (แยก process)
 python src/main.py                      # CLI แบบหลายเทิร์น
-python src/server.py                    # Web Chat: http://localhost:8000
-uvicorn src.server:app --host 0.0.0.0 --port 8000
 
-# 3) (ทางเลือก) อัปเดตกฎหมายใหม่จากราชกิจจาฯ
+# 3) (ทางเลือก) อัปเดตกฎหมายใหม่จากราชกิจจานุเบกษา
 python src/crawl_ratchakitcha.py            # ครั้งเดียว
 python src/crawl_ratchakitcha.py --weekly   # ทุกสัปดาห์
+
+# 4) (ทางเลือก) ทดสอบ splitter กัน truncation หัวมาตรา
+python src/test_section_splitter.py
 ```
 
-### การเชื่อม OpenClaw (เปิดช่องทาง LINE/Telegram ฯลฯ)
+### ตั้งค่า LINE Messaging API
+1. สร้าง channel ที่ https://developers.line.biz/console/ (Messaging API)
+2. คัดลอก `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_CHANNEL_SECRET` ใส่ `.env`
+3. รัน server แล้วตั้ง Webhook URL ใน console: `https://<your-domain>/line/webhook`
+4. ทดสอบ: `curl https://<your-domain>/line/health` ต้องได้ `{"ok": true, "configured": true}`
+
+### ตั้งค่า Discord Bot
+1. สร้าง Application ที่ https://discord.com/developers/applications → Bot → copy token
+2. ใส่ `DISCORD_BOT_TOKEN` ใน `.env` + เปิด **Message Content Intent**
+3. เชิญบอทด้วย OAuth2 URL (scopes: `bot` + `applications.commands`)
+4. รัน `python src/discord_bot.py` — ใช้ได้ทั้ง `!ask`, mention, และ slash `/law`
+
+### การเชื่อม OpenClaw (เปิดช่องทาง Telegram/WhatsApp ฯลฯ)
 1. รัน server: `python src/server.py`
 2. ใน config ของ OpenClaw gateway ชี้ webhook ไปที่ `POST http://<host>:8000/openclaw/webhook` ส่ง `{chat_id, text}`
 3. (แนะนำ) ตั้ง `OPENCLAW_SECRET=...` ทั้งสองฝั่งเพื่อยืนยันตัวตน
@@ -82,17 +122,30 @@ python src/evaluate.py   # วัด accuracy เทียบกับ dataset �
 
 ---
 
+## Docker & Cloud Deploy
+
+```bash
+# Build + รัน local (mount chroma_db เข้า container)
+docker build -t thai-law-chatbot .
+docker run -p 8000:8000 --env-file .env -v $(pwd)/chroma_db:/app/chroma_db thai-law-chatbot
+```
+
+Deploy ขึ้น Google Cloud Run (build, secrets, Cloud Scheduler สำหรับ crawler, Discord บน VM) — ดูคำสั่งฉบับเต็มใน **`gcp_deploy.txt`**
+
+---
+
 ## เทคโนโลยีที่ใช้งาน (Tech Stack)
 
 *   **LangGraph:** สมองของ agent — StateGraph, multi-turn memory (SqliteSaver), intent routing, doc grading
 *   **LangChain:** Data loaders, prompts, output parsers และ hybrid retriever
 *   **ChromaDB:** Vector Database แบบ Offline (Local) สอง collection: `core_law` + `recent_law`
-*   **Ollama:** รัน Local LLM (Llama 3.2) — ไม่มีค่า API รัน offline ได้
-*   **HuggingFace Embeddings:** BAAI/bge-m3 / multilingual MiniLM สำหรับ semantic search
+*   **LLM:** Ollama (local) หรือ OpenAI / Anthropic / Google / OpenRouter (cloud) — สลับได้ผ่าน `.env`
+*   **HuggingFace Embeddings:** multilingual MiniLM สำหรับ semantic search
 *   **PyThaiNLP:** ตัดคำไทยสำหรับ BM25
-*   **FastAPI + Vanilla JS:** Web Chat UI
-*   **OpenClaw:** agent gateway เชื่อมช่องทางแชทภายนอก (LINE, Telegram, WhatsApp)
+*   **FastAPI + Vanilla JS:** Web Chat UI + API
+*   **LINE Messaging API / discord.py / OpenClaw:** ช่องทางแชทภายนอก
 *   **PyMuPDF + requests:** Ratchakitcha crawler
+*   **Docker + Cloud Run:** deploy บน cloud
 
 ---
 

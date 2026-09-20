@@ -7,7 +7,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.schema import Document
 from tqdm import tqdm
 from huggingface_hub import snapshot_download
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from thai_law_splitter import split_law_chunks
 
 def get_hierarchy_metadata(title):
     title_lower = title.lower()
@@ -47,12 +47,6 @@ def ingest_core_law():
     documents = []
     print(f"Processing {len(all_files)} filtered files...")
     
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=config.CHUNK_SIZE,
-        chunk_overlap=config.CHUNK_OVERLAP,
-        separators=["\n\n", "\n", " ", ""]
-    )
-    
     for file_path in tqdm(all_files):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -73,34 +67,25 @@ def ingest_core_law():
                         content = sec.get('content', '').strip()
                         if not content: continue
                         
-                        # ใช้ Regex ควานหาชื่อ มาตรา/ข้อ จากเนื้อหาโดยตรง เพื่อเลี่ยงการดึง sectionId (int) ผิดๆ มาใช้
-                        pattern = r'((?:มาตรา|ข้อ)\s*[0-9๑-๙ก-ฮ\./]+(?:\s*(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฐ|นพ))?)'
-                        match = re.search(pattern, content)
-                        section_label = match.group(1).strip() if match else ""
-                        
-                        chunks = text_splitter.split_text(content)
-                        for j, chunk in enumerate(chunks):
-                            if section_label:
-                                chunk_header = f"กฎหมาย: {title}\nส่วนของ: {section_label}"
-                            else:
-                                chunk_header = f"กฎหมาย: {title}"
-                            
-                            if len(chunks) > 1:
-                                chunk_header += f" (ส่วนที่ {j+1}/{len(chunks)})"
-                                
-                            full_text = f"{chunk_header}\nเนื้อหา: {chunk.strip()}"
-                            
-                            metadata = {
+                        # ใช้ thai_law_splitter: จับ "มาตรา/มาตราที่/ข้อที่" ครบทุก variant
+                        # และทุก chunk มีหัวมาตราติดอยู่เสมอ (แก้ปัญหา truncation)
+                        docs = split_law_chunks(
+                            content,
+                            chunk_size=config.CHUNK_SIZE,
+                            chunk_overlap=config.CHUNK_OVERLAP,
+                            title=title,
+                            extra_metadata={
                                 "source": "ocs-krisdika",
                                 "title": title,
-                                "section_id": section_label if section_label else "ส่วนเนื้อหา",
                                 "unit_type": unit_type,
                                 "hierarchy_level": hierarchy_level,
                                 "publish_date": publish_date,
                                 "reference_url": reference_url,
                                 "category": category
                             }
-                            documents.append(Document(page_content=full_text, metadata=metadata))
+                        )
+                        # เก็บ reference_url ในเนื้อหาไม่จำเป็น — metadata พอ
+                        documents.extend(docs)
         except Exception:
             continue
 

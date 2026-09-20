@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()  # โหลด .env (ถ้ามี)
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,8 +14,26 @@ DB_DIR = os.path.join(PROJECT_ROOT, "chroma_db")
 RECENT_LAW_DIR = os.path.join(DATASETS_DIR, "iapp_2025")
 
 # Models
-LLM_MODEL_NAME = "llama3.2"  # Ollama model name
-EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# LLM_PROVIDER: "ollama" (local, default) | "openai" | "anthropic" | "google" | "openrouter"
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
+LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", "llama3.2")  # Ollama model name
+
+# --- Cloud LLM (ใช้เมื่อ LLM_PROVIDER != "ollama") ---
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+EMBEDDING_MODEL_NAME = os.environ.get(
+    "EMBEDDING_MODEL_NAME",
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
 
 # Vector DB
 COLLECTION_CORE = "core_law"
@@ -28,8 +49,8 @@ SESSION_DB_PATH = os.path.join(PROJECT_ROOT, "chroma_db", "sessions.sqlite")
 CHAT_HISTORY_LIMIT = 12  # max messages sent to the LLM as context
 
 # --- FastAPI Web Chat ---
-API_HOST = "0.0.0.0"
-API_PORT = 8000
+API_HOST = os.environ.get("API_HOST", "0.0.0.0")
+API_PORT = int(os.environ.get("PORT", "8000"))
 
 # --- OpenClaw Gateway Bridge ---
 OPENCLAW_WEBHOOK_PATH = "/openclaw/webhook"
