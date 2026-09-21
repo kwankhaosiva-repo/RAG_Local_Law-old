@@ -5,6 +5,7 @@ Shared runtime: lazy singleton for the LangGraph LegalAgent
 """
 import threading
 
+import db_sync
 from agent import LegalAgent
 
 _lock = threading.Lock()
@@ -22,7 +23,10 @@ def get_agent() -> LegalAgent:
 
 
 def ask(question: str, session_id: str = "default") -> dict:
-    """เรียก agent แบบหลายเทิร์น — คืน {'answer': str, 'sources': [...]}"""
+    """เรียก agent แบบหลายเทิร์น — คืน {'answer': str, 'sources': [...]}
+    ถ้า chroma_db ยัง sync จาก GCS ไม่เสร็จ จะรอจนกว่าจะพร้อม (สูงสุด 5 นาที)
+    """
+    db_sync.wait_ready(timeout=300)  # บล็อกจน vector DB พร้อมก่อน
     return get_agent().chat(session_id.strip() or "default", question)
 
 

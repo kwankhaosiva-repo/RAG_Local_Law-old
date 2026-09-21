@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import config
 import runtime
+import db_sync
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -34,6 +35,11 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list = []
+
+
+@app.get("/health")
+def health():
+    return {"ok": True, "db_ready": db_sync.is_ready()}
 
 
 @app.get("/")
@@ -56,6 +62,12 @@ def chat(req: ChatRequest):
 def reset(req: ChatRequest):
     runtime.reset(req.session_id.strip())
     return {"ok": True}
+
+
+@app.on_event("startup")
+def startup():
+    # ไม่ block การ bind PORT — โหลด chroma_db จาก GCS เป็น background thread
+    db_sync.start_background_sync()
 
 
 # --- Optional channel routers (mount ถ้ามีไฟล์) ---

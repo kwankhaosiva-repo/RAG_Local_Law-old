@@ -1,0 +1,53 @@
+# =============================================================
+# Deploy ด้วย chroma_db จาก GCS (gs://chroma-db-law)
+# =============================================================
+# ต่างจาก deploy ปกติตรงที่ container จะโหลด chroma_db จาก GCS ตอน startup
+# (แทนการ COPY เข้า image ซึ่งจะทำให้ image ใหญ่ 3.4GB+)
+#
+# ขั้นตอน:
+# 1) upload chroma_db ขึ้น GCS (ทำแล้ว):
+#      gcloud storage cp -r ./chroma_db gs://chroma-db-law/
+#
+# 2) ให้ Cloud Run service account อ่าน bucket ได้:
+#      PROJECT_ID=my-thai-law-project
+#      PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
+#      gcloud storage buckets add-iam-policy-binding gs://chroma-db-law \
+#        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+#        --role="roles/storage.objectViewer"
+#
+# 3) deploy (เหมือน gcp_deploy.txt ข้อ 3 แต่เพิ่ม env vars):
+#      gcloud run deploy thai-law-chatbot \
+#        --image ${IMAGE} \
+#        --region ${REGION} \
+#        --port 8000 \
+#        --memory 4Gi --cpu 2 \
+#        --min-instances 1 --max-instances 5 \
+#        --timeout 300 --concurrency 10 \
+#        --allow-unauthenticated \
+#        --set-env-vars "LLM_PROVIDER=openai,OPENAI_MODEL=gpt-4o-mini,GCS_CHROMA_BUCKET=gs://chroma-db-law,GCS_CHROMA_PREFIX=chroma_db" \
+#        --set-secrets "ENV_BLOB=env_law:latest"
+#
+# secret "env_law" เก็บ env ทั้งหมดเป็นก้อนเดียว (รูปแบบ .env) เช่น:
+#   OPENAI_API_KEY=sk-...
+#   LINE_CHANNEL_ACCESS_TOKEN=...
+#   LINE_CHANNEL_SECRET=...
+# โค้ด (src/env_blob.py) จะ parse ให้เองตอน import config
+#
+# 4) ทดสอบหลัง deploy:
+#      SERVICE_URL=$(gcloud run services describe thai-law-chatbot --region ${REGION} --format='value(status.url)')
+#      curl -X POST ${SERVICE_URL}/chat -H "Content-Type: application/json" \
+#        -d '{"session_id":"smoke-test","message":"ทดสอบการทำงาน"}'
+#
+# หมายเหตุ:
+# - chroma_db ถูกโหลดจาก GCS แบบ BACKGROUND หลัง container bind PORT แล้ว
+#   (Cloud Run health check จะผ่านทันที ไม่ fail "container failed to start")
+# - ตรวจสถานะ sync ได้ที่ GET /health → {"db_ready": true/false}
+# - คำถามแรกๆ ที่มาก่อน sync เสร็จ จะรอจน DB พร้อม (สูงสุด 5 นาที)
+# - rsync ครั้งแรกโหลดเต็ม ~3.4GB (region เดียวกับ bucket = เร็ว), ครั้งถัดๆ ไปเฉพาะไฟล์ที่เปลี่ยน
+# - memory แนะนำ 4Gi เพราะต้องโหลด index ทั้งก้อนมาทำงาน
+#
+# LINE webhook หมายเหตุ:
+# - webhook ตอบ 200 ทันที แล้วประมวลผล LLM ใน background (LINE timeout = 2 วิ)
+# - ใช้ Reply API (ฟรี ไม่นับ quota) ถ้า token หมดอายุจะ fallback ไป Push API (นับ quota)
+# - ใน LINE Developers Console: Webhook URL = https://<cloud-run-url>/line/webhook
+#   ปิด auto-reply/greeting ของ Official Account และอย่าเปิด "Use grouped responses"

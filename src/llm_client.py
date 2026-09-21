@@ -49,7 +49,34 @@ def make_llm():
             base_url=config.OPENROUTER_BASE_URL,
         )
 
-    raise ValueError(f"Unknown LLM_PROVIDER: {provider!r} (use ollama/openai/anthropic/google/openrouter)")
+    if provider == "groq":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=config.GROQ_MODEL,
+            temperature=0.0,
+            api_key=config.GROQ_API_KEY,
+            base_url=config.GROQ_BASE_URL,
+        )
+
+    if provider == "mistral":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=config.MISTRAL_MODEL,
+            temperature=0.0,
+            api_key=config.MISTRAL_API_KEY,
+            base_url=config.MISTRAL_BASE_URL,
+        )
+
+    if provider == "cloudflare":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=config.CLOUDFLARE_MODEL,
+            temperature=0.0,
+            api_key=config.CLOUDFLARE_API_KEY,
+            base_url=config.CLOUDFLARE_BASE_URL,
+        )
+
+    raise ValueError(f"Unknown LLM_PROVIDER: {provider!r} (use ollama/openai/anthropic/google/openrouter/groq/mistral/cloudflare)")
 
 
 class LLMClient:

@@ -1,6 +1,26 @@
 import os
 from dotenv import load_dotenv
 
+# --- ENV_BLOB from Secret Manager -------------------------------------------
+# If the whole .env file was uploaded to Secret Manager (e.g. secret name
+# 'env_law') and mapped to a container env var, parse it here so every
+# key inside becomes a normal environment variable.
+for _env_file_var in ('ENV_FILE', 'ENV_BLOB', 'ENV_LAW', 'env_law'):
+    _env_file_content = os.environ.get(_env_file_var, '')
+    if _env_file_content and '=' in _env_file_content:
+        for _line in _env_file_content.splitlines():
+            _line = _line.strip()
+            if not _line or _line.startswith('#') or '=' not in _line:
+                continue
+            if _line.startswith('export '):
+                _line = _line[len('export '):].strip()
+            _key, _, _val = _line.partition('=')
+            _key = _key.strip()
+            _val = _val.strip().strip('"').strip("'")
+            if _key:
+                os.environ.setdefault(_key, _val)
+        break
+
 load_dotenv()  # โหลด .env (ถ้ามี)
 
 # Paths
@@ -28,6 +48,20 @@ GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API", "")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+# OpenAI-compatible providers (ใช้ langchain-openai ร่วมกัน)
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY") or os.environ.get("GROQ_API", "")
+GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY") or os.environ.get("MISTRAL_API", "")
+MISTRAL_BASE_URL = os.environ.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
+MISTRAL_MODEL = os.environ.get("MISTRAL_MODEL", "mistral-small-latest")
+CLOUDFLARE_API_KEY = os.environ.get("CLOUDFLARE_API_KEY") or os.environ.get("CLOUDFLARE_API", "")
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_BASE_URL = os.environ.get(
+    "CLOUDFLARE_BASE_URL",
+    f"https://api.cloudflare.com/client/v4/accounts/{os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')}/ai/v1",
+)
+CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST") or os.environ.get("OLLAMA_API", "http://localhost:11434")
 
 EMBEDDING_MODEL_NAME = os.environ.get(
