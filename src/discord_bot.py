@@ -27,7 +27,10 @@ from runtime import ask, reset
 
 MAX_TEXT = 1950  # Discord จำกัด 2000 ตัวอักษรต่อข้อความ
 
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
+DISCORD_BOT_TOKEN = (
+    os.environ.get("DISCORD_BOT_TOKEN")
+    or os.environ.get("DISCORD_KEY_LAW", "")
+)
 
 intents = discord.Intents.default()
 intents.message_content = True  # ต้องเปิดใน Developer Portal ด้วย

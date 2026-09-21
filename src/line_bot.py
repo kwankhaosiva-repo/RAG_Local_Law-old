@@ -27,8 +27,14 @@ from fastapi.responses import JSONResponse
 
 line_router = APIRouter(prefix="/line", tags=["line"])
 
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
-LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
+LINE_CHANNEL_ACCESS_TOKEN = (
+    os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
+    or os.environ.get("LINE_CHANNEL_ACCESS_TOKEN_LAW", "")
+)
+LINE_CHANNEL_SECRET = (
+    os.environ.get("LINE_CHANNEL_SECRET")
+    or os.environ.get("LINE_CHANNEL_SECRET_LAW", "")
+)
 MAX_TEXT = 4900  # LINE จำกัด ~5000 ตัวอักษรต่อข้อความ (เผื่อ margin)
 
 REPLY_URL = "https://api.line.me/v2/bot/message/reply"

@@ -8,7 +8,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PORT=8000
+    PORT=8080
 
 # libgomp จำเป็นสำหรับ onnxruntime/sentence-transformers
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -34,10 +34,7 @@ COPY .env_example ./
 RUN useradd -m appuser
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -sf http://localhost:${PORT}/ || exit 1
-
-# Default: web server (LINE + OpenClaw มาพร้อมกันใน process เดียว)
-CMD ["sh", "-c", "cd /app && uvicorn src.server:app --host 0.0.0.0 --port ${PORT}"]
+# Cloud Run injects $PORT (default 8080)
+CMD exec uvicorn src.server:app --host 0.0.0.0 --port ${PORT:-8080}

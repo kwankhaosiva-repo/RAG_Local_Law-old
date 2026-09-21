@@ -23,12 +23,12 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API", "")
 GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash")
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API", "")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST") or os.environ.get("OLLAMA_API", "http://localhost:11434")
 
 EMBEDDING_MODEL_NAME = os.environ.get(
     "EMBEDDING_MODEL_NAME",
@@ -50,7 +50,7 @@ CHAT_HISTORY_LIMIT = 12  # max messages sent to the LLM as context
 
 # --- FastAPI Web Chat ---
 API_HOST = os.environ.get("API_HOST", "0.0.0.0")
-API_PORT = int(os.environ.get("PORT", "8000"))
+API_PORT = int(os.environ.get("PORT", "8080"))
 
 # --- OpenClaw Gateway Bridge ---
 OPENCLAW_WEBHOOK_PATH = "/openclaw/webhook"
@@ -67,7 +67,7 @@ RATCHAKITCHA_HF_MONTHS = int(os.environ.get("RATCHAKITCHA_HF_MONTHS", "1"))  # �
 RATCHAKITCHA_API_URL = "https://api.soc.go.th/webservice/api/rkjs/{page}/{limit}"
 RATCHAKITCHA_DOC_URL = "https://ratchakitcha.soc.go.th/documents/{pdf_path}"
 # Token จำเป็นเฉพาะเมื่อใช้ source "api" (สมัครที่ https://www2.soc.go.th)
-RATCHAKITCHA_TOKEN = os.environ.get("RATCHAKITCHA_TOKEN", "")
+RATCHAKITCHA_TOKEN = os.environ.get("RATCHAKITCHA_TOKEN") or os.environ.get("OPEND", "")
 CRAWL_PAGES = 3          # how many pages of announcements to fetch per run
 CRAWL_PAGE_SIZE = 50     # items per API page
 CRAWL_WEEKLY = False     # True = keep running and repeat weekly (schedule lib)
