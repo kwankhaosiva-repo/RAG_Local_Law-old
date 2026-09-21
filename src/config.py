@@ -58,8 +58,16 @@ OPENCLAW_WEBHOOK_PATH = "/openclaw/webhook"
 OPENCLAW_SECRET = os.environ.get("OPENCLAW_SECRET", "")
 
 # --- Ratchakitcha Crawler ---
+# แหล่งดึงกฎหมายใหม่: "hf" (Open Law Data บน Hugging Face — ไม่ต้อง token, แนะนำ)
+# หรือ "api" (Web Service ทางการ api.soc.go.th — ต้องสมัคร Token ที่ https://www2.soc.go.th)
+RATCHAKITCHA_SOURCE = os.environ.get("RATCHAKITCHA_SOURCE", "hf")
+# Dataset meta รายเดือน (jsonl: doctitle, publishDate, source_url ฯลฯ) จากโครงการ Open Law Data Thailand
+RATCHAKITCHA_HF_DATASET = os.environ.get("RATCHAKITCHA_HF_DATASET", "open-law-data-thailand/soc-ratchakitcha")
+RATCHAKITCHA_HF_MONTHS = int(os.environ.get("RATCHAKITCHA_HF_MONTHS", "1"))  # จำนวนเดือนย้อนหลังที่จะดึง
 RATCHAKITCHA_API_URL = "https://api.soc.go.th/webservice/api/rkjs/{page}/{limit}"
 RATCHAKITCHA_DOC_URL = "https://ratchakitcha.soc.go.th/documents/{pdf_path}"
+# Token จำเป็นเฉพาะเมื่อใช้ source "api" (สมัครที่ https://www2.soc.go.th)
+RATCHAKITCHA_TOKEN = os.environ.get("RATCHAKITCHA_TOKEN", "")
 CRAWL_PAGES = 3          # how many pages of announcements to fetch per run
 CRAWL_PAGE_SIZE = 50     # items per API page
 CRAWL_WEEKLY = False     # True = keep running and repeat weekly (schedule lib)

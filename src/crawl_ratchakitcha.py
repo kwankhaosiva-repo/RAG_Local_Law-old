@@ -1,13 +1,19 @@
 """
 Ratchakitcha Crawler — อัปเดตกฎหมายใหม่อัตโนมัติ
 -------------------------------------------------
-ดึงรายการประกาศใหม่จาก Web Service ทางการของราชกิจจานุเบกษา (api.soc.go.th)
-โหลด PDF -> extract ข้อความ -> แบ่งตามมาตรา/ข้อ -> ingest เข้า collection recent_law
+ดึงรายการประกาศใหม่จาก 2 แหล่ง (เลือกด้วย RATCHAKITCHA_SOURCE ใน .env):
+  1. "hf"  (default) — meta รายเดือนจากโครงการ Open Law Data Thailand บน Hugging Face
+     (open-law-data-thailand/soc-ratchakitcha) ได้ source_url ของ PDF มาตรงๆ ไม่ต้องสมัคร token
+  2. "api" — Web Service ทางการ api.soc.go.th (ต้องสมัคร Token ที่ https://www2.soc.go.th)
+
+จากนั้น: โหลด PDF -> extract ข้อความ -> แบ่งตามมาตรา/ข้อ -> ingest เข้า collection recent_law
 พร้อม deduplicate ด้วย hash (title + publish_date) กัน ingest ซ้ำ
 
 ใช้งาน:
-    python src/crawl_ratchakitcha.py            # crawl ครั้งเดียวแล้วจบ
-    python src/crawl_ratchakitcha.py --weekly   # รันต่อเนื่อง ทำงานทุกสัปดาห์
+    python src/crawl_ratchakitcha.py                    # crawl ครั้งเดียวแล้วจบ (source ตาม .env)
+    python src/crawl_ratchakitcha.py --limit 20        # ingest สูงสุด 20 ฉบับต่อรัน
+    python src/crawl_ratchakitcha.py --source api      # บังคับใช้ API ทางการ (ต้องมี token)
+    python src/crawl_ratchakitcha.py --weekly          # รันต่อเนื่อง ทำงานทุกสัปดาห์
 """
 import os
 import sys
@@ -20,6 +26,7 @@ warnings.filterwarnings("ignore")
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import re
+import json
 import requests
 import config
 from tqdm import tqdm
@@ -37,6 +44,8 @@ LAW_TYPE_KEYWORDS = [
 ]
 
 HEADERS = {"User-Agent": "ThaiLegalRAG/1.0 (contact: local-user)"}
+if config.RATCHAKITCHA_TOKEN:
+    HEADERS["Authorization"] = f"Bearer {config.RATCHAKITCHA_TOKEN}"
 
 
 # ---------------- dedupe store ----------------
@@ -72,12 +81,16 @@ def mark_ingested(conn, h: str, title: str, publish_date: str):
     conn.commit()
 
 
-# ---------------- API ----------------
-def fetch_announcement_list(conn, page: int = 1, limit: int = 50):
+# ---------------- API ทางการ (api.soc.go.th — ต้องมี token) ----------------
+def fetch_announcement_list_api(conn, page: int = 1, limit: int = 50):
     """เรียก API ราชกิจจานุเบกษา คืน list ของ {title, publish_date, pdf_path}"""
     url = config.RATCHAKITCHA_API_URL.format(page=page, limit=limit)
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30)
+        if resp.status_code == 401:
+            print("[error] API ราชกิจจาฯ ตอบ 401 — ต้องตั้ง RATCHAKITCHA_TOKEN ใน .env")
+            print("        (สมัคร/เข้าสู่ระบบรับ Token ที่ https://www2.soc.go.th)")
+            return []
         resp.raise_for_status()
         payload = resp.json()
     except Exception as e:
@@ -114,6 +127,22 @@ def fetch_announcement_list(conn, page: int = 1, limit: int = 50):
             continue
         items.append({"title": title, "publish_date": publish_date, "pdf_path": pdf_rel})
     return items
+
+
+def download_pdf_url(pdf_url: str, out_dir: str) -> str | None:
+    """โหลด PDF จาก URL เต็ม (ใช้กับ source_url จาก HF meta)"""
+    try:
+        resp = requests.get(pdf_url, headers=HEADERS, timeout=60)
+        resp.raise_for_status()
+        os.makedirs(out_dir, exist_ok=True)
+        fname = hashlib.md5(pdf_url.encode()).hexdigest() + ".pdf"
+        path = os.path.join(out_dir, fname)
+        with open(path, "wb") as f:
+            f.write(resp.content)
+        return path
+    except Exception as e:
+        print(f"[warn] ดาวน์โหลด PDF ไม่สำเร็จ ({pdf_url}): {e}")
+        return None
 
 
 def download_pdf(pdf_rel_path: str, out_dir: str) -> str | None:
@@ -199,19 +228,79 @@ def ingest_documents(documents):
         vectorstore.add_documents(documents=documents[i:i + batch_size])
 
 
+# ---------------- Open Law Data (Hugging Face) — ไม่ต้องใช้ token ----------------
+def fetch_announcement_list_hf(conn, months: int = 1) -> list[dict]:
+    """ดึง meta รายเดือน (jsonl) จาก Open Law Data Thailand บน Hugging Face
+    คืน list ของ {title, publish_date, pdf_path, pdf_url} — pdf_path คือ URL เต็ม"""
+    from datetime import date
+    today = date.today()
+    months_list = []
+    for back in range(months):
+        y, m = today.year, today.month - back
+        while m <= 0:
+            m += 12
+            y -= 1
+        months_list.append(f"{y}-{m:02d}")
+
+    items = []
+    for ym in months_list:
+        url = f"https://huggingface.co/datasets/{config.RATCHAKITCHA_HF_DATASET}/resolve/main/meta/{ym[:4]}/{ym}.jsonl"
+        try:
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"[warn] โหลด meta {ym}.jsonl ไม่สำเร็จ: {e}")
+            continue
+        count = 0
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            title = (entry.get("doctitle") or "").strip()
+            pdf_url = (entry.get("source_url") or "").strip()
+            publish_date = str(entry.get("publishDate") or "")[:10]
+            if not title or not pdf_url:
+                continue
+            if not any(k in title for k in LAW_TYPE_KEYWORDS):
+                continue  # สนใจเฉพาะประเภทกฎหมาย/ประกาศ
+            h = doc_hash(title, publish_date)
+            if already_ingested(conn, h):
+                continue
+            items.append({"title": title, "publish_date": publish_date, "pdf_path": pdf_url, "pdf_url": pdf_url})
+            count += 1
+        print(f"เดือน {ym}: พบกฎหมาย/ประกาศใหม่ {count} รายการ")
+    return items
+
+
 # ---------------- main ----------------
-def run_crawl():
+def run_crawl(source: str | None = None, max_docs: int | None = None):
+    source = source or config.RATCHAKITCHA_SOURCE
     print("=" * 50)
-    print("  Ratchakitcha Crawler — อัปเดตกฎหมายใหม่")
+    print(f"  Ratchakitcha Crawler — อัปเดตกฎหมายใหม่ (source: {source})")
     print("=" * 50)
 
     conn = init_dedupe_db()
-    new_items = []
-    for page in range(1, config.CRAWL_PAGES + 1):
-        items = fetch_announcement_list(conn, page=page, limit=config.CRAWL_PAGE_SIZE)
-        new_items.extend(items)
-        print(f"หน้า {page}: พบกฎหมาย/ประกาศใหม่ {len(items)} รายการ")
+    new_items: list[dict] = []
+    if source == "api":
+        if not config.RATCHAKITCHA_TOKEN:
+            print("[error] source 'api' ต้องตั้ง RATCHAKITCHA_TOKEN ใน .env (สมัครที่ https://www2.soc.go.th)")
+            print("        หรือเปลี่ยนไปใช้ source 'hf' (default) ซึ่งไม่ต้องสมัคร token")
+            conn.close()
+            return
+        for page in range(1, config.CRAWL_PAGES + 1):
+            items = fetch_announcement_list_api(conn, page=page, limit=config.CRAWL_PAGE_SIZE)
+            new_items.extend(items)
+            print(f"หน้า {page}: พบกฎหมาย/ประกาศใหม่ {len(items)} รายการ")
+    else:  # hf (default)
+        new_items = fetch_announcement_list_hf(conn, months=config.RATCHAKITCHA_HF_MONTHS)
 
+    if max_docs:
+        new_items = new_items[:max_docs]
+    print(f"\nรวมรายการใหม่ {len(new_items)} ฉบับที่ต้องประมวลผล")
     if not new_items:
         print("ไม่มีรายการใหม่ที่ต้อง ingest")
         conn.close()
@@ -220,7 +309,11 @@ def run_crawl():
     os.makedirs(config.CRAWL_DIR, exist_ok=True)
     all_docs = []
     for item in tqdm(new_items, desc="Processing PDFs"):
-        pdf_path = download_pdf(item["pdf_path"], config.CRAWL_DIR)
+        # รองรับทั้ง URL เต็ม (จาก HF) และ relative path (จาก API ทางการ)
+        if item["pdf_path"].startswith("http"):
+            pdf_path = download_pdf_url(item["pdf_path"], config.CRAWL_DIR)
+        else:
+            pdf_path = download_pdf(item["pdf_path"], config.CRAWL_DIR)
         if not pdf_path:
             continue
         text = extract_pdf_text(pdf_path)
@@ -248,6 +341,10 @@ def main():
     parser = argparse.ArgumentParser(description="Ratchakitcha law crawler")
     parser.add_argument("--weekly", action="store_true",
                         help="รันต่อเนื่อง ทำงานทุกสัปดาห์ (ใช้ schedule lib)")
+    parser.add_argument("--source", choices=["hf", "api"], default=None,
+                        help="แหล่งดึงข้อมูล: hf=Hugging Face Open Law Data (default), api=ทางการ (ต้องมี token)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="จำนวนฉบับสูงสุดที่จะประมวลผลต่อรัน")
     args = parser.parse_args()
 
     if args.weekly:
@@ -255,13 +352,13 @@ def main():
         import time
 
         print("โหมด weekly: จะ crawl ตอนนี้ครั้งแรก และทุก 7 วัน (Ctrl+C เพื่อหยุด)")
-        run_crawl()
-        schedule.every(7).days.do(run_crawl)
+        run_crawl(source=args.source, max_docs=args.limit)
+        schedule.every(7).days.do(run_crawl, source=args.source, max_docs=args.limit)
         while True:
             schedule.run_pending()
             time.sleep(3600)
     else:
-        run_crawl()
+        run_crawl(source=args.source, max_docs=args.limit)
 
 
 if __name__ == "__main__":

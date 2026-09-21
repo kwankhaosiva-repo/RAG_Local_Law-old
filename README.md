@@ -63,10 +63,19 @@
 สลับ provider ได้โดยไม่แก้โค้ด — เหมาะกับการ deploy บน cloud ที่ไม่มี GPU
 
 ### 5. Ratchakitcha Crawler (`src/crawl_ratchakitcha.py`) — อัปเดตกฎหมายใหม่อัตโนมัติ
-*   ดึงรายการประกาศใหม่จาก **Web Service ทางการของราชกิจจานุเบกษา** (`api.soc.go.th`) กรองเฉพาะ พ.ร.บ. / พ.ร.ฎ. / กฎกระทรวง / ประกาศ / ระเบียบ
-*   โหลด PDF → extract ข้อความ (PyMuPDF) → แบ่งตามมาตรา/ข้อ (ด้วย splitter ใหม่) → ingest เข้า collection `recent_law`
-*   **Deduplicate:** hash (title + วันประกาศ) ใน SQLite กัน ingest ซ้ำ
-*   รันครั้งเดียว: `python src/crawl_ratchakitcha.py` | รันต่อเนื่องทุกสัปดาห์: `python src/crawl_ratchakitcha.py --weekly`
+ดึงรายการประกาศใหม่จาก 2 แหล่ง (เลือกด้วย `RATCHAKITCHA_SOURCE` ใน `.env`):
+*   **`hf` (default, แนะนำ):** meta รายเดือนจากโครงการ **Open Law Data Thailand** บน Hugging Face (`open-law-data-thailand/soc-ratchakitcha`) — ได้ `source_url` ของ PDF มาตรงๆ **ไม่ต้องสมัคร token** อัปเดตทุกวันโดยทีมโครงการ
+*   **`api`:** Web Service ทางการ `api.soc.go.th` — ต้องสมัคร Token ที่ https://www2.soc.go.th แล้วตั้ง `RATCHAKITCHA_TOKEN` ใน `.env`
+
+ทั้งสองแหล่งใช้ pipeline เดียวกัน: โหลด PDF → extract ข้อความ (PyMuPDF) → แบ่งตามมาตรา/ข้อ (splitter ใหม่) → ingest เข้า collection `recent_law` + **Deduplicate ด้วย hash (title + วันประกาศ)** ใน SQLite กัน ingest ซ้ำ
+
+```bash
+python src/crawl_ratchakitcha.py                 # รันครั้งเดียว (source ตาม .env — default hf)
+python src/crawl_ratchakitcha.py --limit 50     # จำกัดจำนวนฉบับต่อรัน
+python src/crawl_ratchakitcha.py --source api   # บังคับใช้ API ทางการ (ต้องมี token)
+python src/crawl_ratchakitcha.py --weekly       # รันต่อเนื่องทุกสัปดาห์
+```
+ตั้งจำนวนเดือนย้อนหลังที่จะดึงจาก HF ได้ด้วย `RATCHAKITCHA_HF_MONTHS` (default 1)
 
 ### 6. Generation & Evaluation (คงเดิม)
 *   **Chain-of-Thought + Strict Polarity:** ยก quote ก่อนแล้ว "สรุป:" ฟันธงชัดเจน
@@ -96,6 +105,12 @@ python src/crawl_ratchakitcha.py --weekly   # ทุกสัปดาห์
 
 # 4) (ทางเลือก) ทดสอบ splitter กัน truncation หัวมาตรา
 python src/test_section_splitter.py
+
+# 5) (แนะนำ) Dev Test Mode — ทดสอบทั้งระบบด้วย Ollama local ก่อน deploy ขึ้น GCP
+#    ไม่ต้องมี LINE/Discord/cloud API key — ทดสอบ LLM, retriever, agent, multi-turn, intent routing ครบ
+python src/test_local.py                       # ใช้ mistral-small3.2:24b (default)
+python src/test_local.py --model llama3.2     # สลับโมเดล
+python src/test_local.py --quick              # ข้าม multi-turn (เร็วขึ้น)
 ```
 
 ### ตั้งค่า LINE Messaging API

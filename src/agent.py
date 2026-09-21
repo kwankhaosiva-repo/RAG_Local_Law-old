@@ -18,6 +18,7 @@ import config
 from retriever import Retriever
 from llm_client import LLMClient
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import Annotated, TypedDict
@@ -64,7 +65,7 @@ REWRITE_PROMPT = """จากบทสนทนาต่อไปนี้ เ�
 
 คำถามที่เขียนใหม่:"""
 
-GRADE_PROMPT = """You are a strict grader checking whether retrieved legal documents can answer the user's question.
+GRADE_PROMPT = """You are a grader checking whether retrieved legal documents are useful for answering the user's question.
 
 Question: {question}
 
@@ -73,7 +74,8 @@ Retrieved documents:
 {documents}
 ---
 
-Does any document contain information that helps answer the question?
+Is at least one document relevant or partially relevant to the question's topic (e.g. mentions the same offense, right, law, or related penalties)?
+Be generous: if the topic overlaps, answer yes. Only answer no if NOTHING is related.
 Answer with EXACTLY one word: "yes" or "no"."""
 
 
@@ -101,7 +103,7 @@ class LegalAgent:
         if self._intent_chain is None:
             from langchain_core.output_parsers import StrOutputParser
             self._intent_chain = (
-                LEGAL_INTENT_PROMPT | self.llm | StrOutputParser()
+                ChatPromptTemplate.from_template(LEGAL_INTENT_PROMPT) | self.llm | StrOutputParser()
             )
         return self._intent_chain
 
@@ -109,7 +111,7 @@ class LegalAgent:
         if self._rewrite_chain is None:
             from langchain_core.output_parsers import StrOutputParser
             self._rewrite_chain = (
-                REWRITE_PROMPT | self.llm | StrOutputParser()
+                ChatPromptTemplate.from_template(REWRITE_PROMPT) | self.llm | StrOutputParser()
             )
         return self._rewrite_chain
 
@@ -117,7 +119,7 @@ class LegalAgent:
         if self._grade_chain is None:
             from langchain_core.output_parsers import StrOutputParser
             self._grade_chain = (
-                GRADE_PROMPT | self.llm | StrOutputParser()
+                ChatPromptTemplate.from_template(GRADE_PROMPT) | self.llm | StrOutputParser()
             )
         return self._grade_chain
 
@@ -213,7 +215,7 @@ class LegalAgent:
                 "question": question,
                 "documents": doc_text,
             }).strip().lower()
-            enough = verdict.startswith("yes")
+            enough = verdict.startswith("yes") or "yes" in verdict[:40]
         except Exception:
             # ถ้า grader ล้มเหลว ให้ผ่านไปก่อน (มี docs อยู่แล้ว)
             enough = True
