@@ -1,0 +1,78 @@
+# =============================================================
+# แบบที่ 2: Local LLM (Ollama) + ngrok — เชื่อม Cloud Run กลับเครื่องเรา
+# =============================================================
+# หลักการ: Cloud Run ไม่สามารถเรียก "localhost" ของเครื่องเราได้
+# ngrok สร้าง public URL ที่ยิงกลับมาที่เครื่องเรา → Cloud Run เรียก
+# LLM ผ่าน ngrok URL นั้นได้ เหมือนเรียก API ปกติ (ใช้ provider "gateway")
+#
+# ต้นทุน: 0 บาท (Ollama รันในเครื่อง + ngrok free tier)
+# ข้อจำกัด: เครื่องเราต้องเปิดค้างไว้เสมอ ไม่งั้นคำตอบจะ fallback ไป provider อื่น
+#           (หรือถ้าไม่ตั้ง failover จะ error)
+#
+# ---------------------------------------------------------------
+# ขั้นตอนที่ 1: เปิด Ollama + โหลดโมเดล (ถ้ายังไม่มี)
+# ---------------------------------------------------------------
+#   ollama serve                    # ปกติ app เปิดอยู่แล้วที่ port 11434
+#   ollama pull llama3.2            # โมเดลที่ทดสอบแล้วใช้ได้
+#
+# ทดสอบว่า Ollama ตอบ:
+#   curl http://localhost:11434/v1/chat/completions \
+#     -H "Content-Type: application/json" \
+#     -d '{"model":"llama3.2","messages":[{"role":"user","content":"สวัสดี"}]}'
+#
+# หมายเหตุ: Ollama มี OpenAI-compatible endpoint ในตัวที่ /v1 อยู่แล้ว
+#           → ใช้กับ provider "gateway" ได้เลย ไม่ต้องติดตั้งอะไรเพิ่ม
+#
+# ---------------------------------------------------------------
+# ขั้นตอนที่ 2: ติดตั้ง ngrok แล้วเปิด tunnel
+# ---------------------------------------------------------------
+#   สมัครฟรีที่ https://ngrok.com → เอา authtoken
+#   brew install ngrok            (macOS)
+#   ngrok config add-authtoken <token>
+#
+#   ngrok http 11434
+#   → จะได้ URL แบบ https://xxxx-xx-xx-xx-xx.ngrok-free.app
+#     (free tier URL เปลี่ยนทุกครั้งที่ restart ต้อง update บน Cloud Run ใหม่)
+#
+# ---------------------------------------------------------------
+# ขั้นตอนที่ 3: อัปเดต Cloud Run ให้ชี้ LLM มาที่เครื่องเรา
+# ---------------------------------------------------------------
+#   gcloud run services update rag-law \
+#     --project rag-law-509304 \
+#     --region asia-southeast1 \
+#     --set-env-vars "LLM_PROVIDER=gateway,GATEWAY_BASE_URL=https://xxxx.ngrok-free.app/v1,GATEWAY_MODEL=llama3.2,GATEWAY_API_KEY=not-needed,LLM_FAILOVER_CHAIN=groq,mistral"
+#
+# แนะนำตั้ง LLM_FAILOVER_CHAIN ไว้ด้วย เพราะถ้าเครื่องเราปิด/เน็ตหลุด
+# คำถามจะ fallback ไป free provider อื่นอัตโนมัติ ไม่ตอบ error
+#
+# ---------------------------------------------------------------
+# แล้ว LINE webhook ล่ะ?
+# ---------------------------------------------------------------
+# ไม่ต้องใช้ ngrok สำหรับ LINE เพราะเรามี Cloud Run URL (public อยู่แล้ว):
+#   https://rag-law-226111202600.asia-southeast1.run.app/line/webhook
+#   → เอา URL นี้ไปใส่ใน LINE Developers Console → Messaging API → Webhook URL
+#     กด Verify แล้ว Enable webhook
+#
+# ngrok ใช้เฉพาะกรณี "ย้าย LLM กลับมาเครื่องเรา" เท่านั้น
+# (ไม่ได้หมายความว่าต้อง host server เอง — server ยังอยู่บน Cloud Run เหมือนเดิม)
+#
+# สรุปสิ่งที่ต้องมี:
+# - LINE: Channel access token + channel secret (จาก LINE Developers Console)
+#   → ใส่ใน secret env_law แล้ว update deployment
+# - Cloud Run: ยัง host ที่เดิม, แค่เปลี่ยน env vars ให้ชี้ LLM มาที่ ngrok URL
+# - เครื่องเรา: เปิด Ollama + ngrok ค้างไว้ตลอดที่ต้องการใช้
+#
+# ---------------------------------------------------------------
+# สรุปเปรียบเทียบ 2 ทางเลือก
+# ---------------------------------------------------------------
+# แบบที่ 1 (แนะนำ): Cloud gateway ฟรี
+#   + ไม่ต้องเปิดเครื่องค้าง, deploy แล้วจบ, มี failover ได้หลายเจ้า
+#   - ต้องสมัคร free API key เพิ่ม (groq/mistral/unorouter/9router)
+#   - free tier มี rate limit แต่สำหรับ chatbot ทั่วไปพอ
+#
+# แบบที่ 2: ngrok + Ollama ในเครื่อง
+#   + ฟรี 100%, ไม่มี rate limit, ใช้โมเดลที่ทดสอบแล้ว
+#   - เครื่องต้องเปิดค้าง, เน็ตต้องเสถียร
+#   - ngrok free URL เปลี่ยนบ่อย ต้อง update Cloud Run ทุกครั้ง
+#   - latency สูงกว่า (Cloud Run → ngrok → เครื่องเรา)
+#   - ถ้าเครื่องล่ม จะตอบไม่ได้เลย (ยกเว้นตั้ง failover ไว้)

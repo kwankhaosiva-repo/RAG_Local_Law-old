@@ -43,8 +43,12 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API", "")
-GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash")
+# --- Gemini ปิดไว้ก่อน (API key ฟรีต้องผูก billing account จึงจะใช้ได้) ---
+# จะกลับมาใช้เมื่อไรผูกบัตร: uncomment + ตั้ง LLM_PROVIDER=google
+# GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API", "")
+# GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-2.0-flash")
+GOOGLE_API_KEY = ""  # disabled — ดู comment ด้านบน
+GOOGLE_MODEL = "gemini-2.0-flash"
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API", "")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
@@ -63,6 +67,25 @@ CLOUDFLARE_BASE_URL = os.environ.get(
 )
 CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST") or os.environ.get("OLLAMA_API", "http://localhost:11434")
+
+# --- Generic OpenAI-compatible gateway (9router.com ฯลฯ) ---
+# ใช้เมื่อ LLM_PROVIDER=gateway — รองรับทุกเจ้าที่ API เป็นมาตรฐาน OpenAI
+GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "")
+GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY", "")
+GATEWAY_MODEL = os.environ.get("GATEWAY_MODEL", "gpt-4o-mini")
+
+# --- UNOROUTER (unorouter.com — free OpenAI-compatible API) ---
+# key เก็บใน Secret Manager แล้ว (secret env_law)
+UNOROUTER_API_KEY = os.environ.get("UNOROUTER_API_KEY", "")
+UNOROUTER_BASE_URL = os.environ.get("UNOROUTER_BASE_URL", "https://unorouter.com/v1")
+UNOROUTER_MODEL = os.environ.get("UNOROUTER_MODEL", "gpt-4o-mini")
+
+# --- Failover chain: ถ้า LLM หลักล้ม (quota หมด/ล่ม) ส่งต่อ prompt+context เดิม
+# ให้ตัวถัดไปทันที — default: unorouter → groq → mistral → ollama (ตามที่มี key)
+# (provider ที่ไม่มี key จะถูกข้ามอัตโนมัติ ไม่ต้องแก้ chain เอง)
+LLM_FAILOVER_CHAIN = os.environ.get(
+    "LLM_FAILOVER_CHAIN", "unorouter,groq,mistral,ollama"
+)
 
 EMBEDDING_MODEL_NAME = os.environ.get(
     "EMBEDDING_MODEL_NAME",

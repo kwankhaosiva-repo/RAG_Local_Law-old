@@ -1,11 +1,13 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+import os
+
 import config
 
 
-def make_llm():
-    """คืน LLM ตาม config.LLM_PROVIDER (ollama หรือ cloud providers)"""
-    provider = (config.LLM_PROVIDER or "ollama").lower()
+def _make_provider_llm(provider: str):
+    """คืน LLM ของ provider ตัวเดียว (ollama/openai/.../gateway)"""
+    provider = (provider or "ollama").lower()
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -76,7 +78,117 @@ def make_llm():
             base_url=config.CLOUDFLARE_BASE_URL,
         )
 
-    raise ValueError(f"Unknown LLM_PROVIDER: {provider!r} (use ollama/openai/anthropic/google/openrouter/groq/mistral/cloudflare)")
+    # --- UNOROUTER (unorouter.com — free OpenAI-compatible) ---
+    if provider == "unorouter":
+        if not config.UNOROUTER_BASE_URL:
+            raise ValueError("UNOROUTER_BASE_URL is required")
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=config.UNOROUTER_MODEL,
+            temperature=0.0,
+            api_key=config.UNOROUTER_API_KEY or "not-needed",
+            base_url=config.UNOROUTER_BASE_URL,
+        )
+
+    # --- Generic OpenAI-compatible gateway (9router.com ฯลฯ) ---
+    # ใช้ได้กับทุกเจ้าที่ API เป็นมาตรฐาน OpenAI: แค่เปลี่ยน GATEWAY_BASE_URL
+    if provider == "gateway":
+        if not config.GATEWAY_BASE_URL:
+            raise ValueError("GATEWAY_BASE_URL is required when LLM_PROVIDER=gateway")
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=config.GATEWAY_MODEL,
+            temperature=0.0,
+            api_key=config.GATEWAY_API_KEY or "not-needed",  # บางเจ้า local/free ไม่ต้องมี key
+            base_url=config.GATEWAY_BASE_URL,
+        )
+
+    raise ValueError(
+        f"Unknown LLM_PROVIDER: {provider!r} "
+        "(use ollama/openai/anthropic/google/openrouter/groq/mistral/cloudflare/gateway/unorouter)"
+    )
+
+
+# key ที่จำเป็นต่อ provider — ใช้กรองตัวที่ยังไม่มี key ออกจาก failover chain
+_PROVIDER_REQUIRED_KEY = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "cloudflare": "CLOUDFLARE_API_KEY",
+    "gateway": "GATEWAY_API_KEY",  # บางเจ้าไม่บังคับ — ถ้าไม่มี key ก็ยังลองได้
+    "unorouter": "UNOROUTER_API_KEY",
+    "ollama": None,
+}
+
+
+def _provider_ready(provider: str) -> bool:
+    key_name = _PROVIDER_REQUIRED_KEY.get(provider)
+    if not key_name:
+        return True
+    return bool(getattr(config, key_name, "") or os.environ.get(key_name))
+
+
+class FallbackLLM:
+    """ห่อ LLM หลายตัวเรียงตามลำดับ — ตัวไหน error/quota หมด ข้ามไปตัวถัดไปทันที
+    ใช้ API เดียวกับ LangChain chat model (invoke / bind) เพื่อแทนที่ได้ seamless
+    """
+
+    def __init__(self, llms: list):
+        self._llms = llms
+
+    def invoke(self, *args, **kwargs):
+        last_err: Exception | None = None
+        for llm in self._llms:
+            try:
+                return llm.invoke(*args, **kwargs)
+            except Exception as e:
+                last_err = e
+                print(
+                    f"[llm_client] {llm.__class__.__name__} failed, "
+                    f"trying next in failover chain: {type(e).__name__}: {e}"
+                )
+        raise last_err  # ทุกตัวล้มเหลว
+
+    def bind(self, **kwargs):
+        return FallbackLLM([llm.bind(**kwargs) for llm in self._llms])
+
+    @property
+    def providers(self) -> list[str]:
+        return [llm.__class__.__name__ for llm in self._llms]
+
+
+def make_llm():
+    """คืน LLM หลัก — ถ้าตั้ง LLM_FAILOVER_CHAIN ไว้ จะได้ FallbackLLM ที่
+    ส่งต่อ context/prompt เดิมให้ provider ถัดไปเมื่อตัวหลักล้ม (quota หมด/ล่ม)
+    ตัวอย่าง: LLM_FAILOVER_CHAIN="gateway,groq,mistral"
+    """
+    provider = (config.LLM_PROVIDER or "ollama").lower()
+    primary = _make_provider_llm(provider)
+
+    chain = [
+        p.strip().lower()
+        for p in (config.LLM_FAILOVER_CHAIN or "").split(",")
+        if p.strip()
+    ]
+    llms = [primary]
+    for p in chain:
+        if p == provider:
+            continue
+        if not _provider_ready(p):
+            print(f"[llm_client] failover skip {p!r} (missing API key)")
+            continue
+        try:
+            llms.append(_make_provider_llm(p))
+        except Exception as e:
+            print(f"[llm_client] failover skip {p!r}: {e}")
+
+    if len(llms) == 1:
+        return primary
+    print(f"[llm_client] failover chain: {[type(x).__name__ for x in llms]}")
+    return FallbackLLM(llms)
 
 
 class LLMClient:
