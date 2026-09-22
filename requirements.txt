@@ -20,6 +20,10 @@ pydantic
 python-dotenv
 httpx
 
+# --- GCP user data (Firestore chat history + BigQuery analytics) ---
+google-cloud-firestore
+google-cloud-bigquery
+
 # --- Channels ---
 # LINE: ใช้ httpx ตรงๆ (ไม่มี SDK เพิ่ม)
 discord.py>=2.3.0

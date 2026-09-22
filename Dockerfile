@@ -30,11 +30,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
 COPY src/ ./src/
-COPY scripts/ ./scripts/
 COPY .env_example ./
-
-# Make startup script executable
-RUN chmod +x scripts/start_cloudrun.sh
 
 # chroma_db (vector index) ควร mount เป็น volume ตอนรัน:
 #   -v $(pwd)/chroma_db:/app/chroma_db
