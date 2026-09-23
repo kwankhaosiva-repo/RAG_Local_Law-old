@@ -77,6 +77,18 @@
 # - rsync ครั้งแรกโหลดเต็ม ~3.4GB (region เดียวกับ bucket = เร็ว), ครั้งถัดๆ ไปเฉพาะไฟล์ที่เปลี่ยน
 # - memory แนะนำ 4Gi เพราะต้องโหลด index ทั้งก้อนมาทำงาน
 #
+# --- ทางเลือก: Pinecone (ตัด cold start ที่มาจากการ sync chroma_db ออก) ---
+# 1) migrate ข้อมูล (รัน local ครั้งเดียว):
+#      export PINECONE_KEY=pcsk_...   # (ใส่ใน secret env_law แล้ว)
+#      pip install pinecone langchain-pinecone
+#      python scripts/migrate_chroma_to_pinecone.py --dry-run   # ดูจำนวนก่อน
+#      python scripts/migrate_chroma_to_pinecone.py             # อัปจริง
+# 2) deploy ด้วย env เพิ่ม:
+#      VECTOR_STORE=pinecone
+#    → container จะข้ามการ rsync chroma_db จาก GCS ทันที startup ไวขึ้น
+#    → ไม่ต้องให้ SA มีสิทธิ์อ่าน bucket, ไม่ต้องพึ่ง gcloud CLI ใน image
+# 3) หมายเหตุ: BM25 hybrid search ยังทำงานเหมือนเดิม (rerank ใน memory)
+#
 # --- Firestore (rag-law-db) ---
 # - ประวัติแชททุกเทิร์นเก็บที่ collection "chat_sessions" → doc <session_id> → subcollection "turns"
 # - ดูใน console: Firestore Studio → database rag-law-db

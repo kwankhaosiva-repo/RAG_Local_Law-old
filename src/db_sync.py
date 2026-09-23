@@ -89,6 +89,13 @@ def start_background_sync() -> None:
         if _started:
             return
         _started = True
+
+    # ใช้ Pinecone (cloud vector DB) → ไม่ต้องโหลด chroma_db จาก GCS เลย
+    if (config.VECTOR_STORE or "chroma").lower() == "pinecone":
+        print("[db_sync] VECTOR_STORE=pinecone — skipping GCS sync (no cold start download)")
+        _ready.set()
+        return
+
     threading.Thread(target=_worker, name="gcs-db-sync", daemon=True).start()
 
 

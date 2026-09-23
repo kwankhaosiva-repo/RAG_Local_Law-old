@@ -1,5 +1,13 @@
 import config
-from langchain_chroma import Chroma
+
+# --- Vector store backend: "chroma" (default) หรือ "pinecone" ---
+VECTOR_BACKEND = (config.VECTOR_STORE or "chroma").lower()
+
+if VECTOR_BACKEND == "pinecone":
+    from langchain_pinecone import PineconeVectorStore
+else:
+    from langchain_chroma import Chroma
+
 from langchain_huggingface import HuggingFaceEmbeddings
 try:
     from langchain.retrievers import EnsembleRetriever
@@ -13,34 +21,58 @@ if os.name == 'nt':
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 # -------------------------
 
+# langchain-pinecone อ่าน env PINECONE_API_KEY เท่านั้น (โปรเจกต์ตั้ง PINECONE_KEY)
+# ไม่งั้นจะได้ ValueError: Pinecone API key must be provided in either
+# `pinecone_api_key` or `PINECONE_API_KEY` environment variable (ดู langchain-pinecone#110)
+if VECTOR_BACKEND == "pinecone" and config.PINECONE_API_KEY:
+    os.environ.setdefault("PINECONE_API_KEY", config.PINECONE_API_KEY)
+
 class Retriever:
     def __init__(self):
-        print("Initializing Professional Hybrid Retriever (Vector + BM25)...")
+        print(f"Initializing Professional Hybrid Retriever (backend={VECTOR_BACKEND})...")
         self.embeddings = HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL_NAME)
-        
+
         # 1. Load Vector Stores
-        self.core_db = Chroma(
-            collection_name=config.COLLECTION_CORE,
-            persist_directory=config.DB_DIR,
-            embedding_function=self.embeddings
-        )
-        self.recent_db = Chroma(
-            collection_name=config.COLLECTION_RECENT,
-            persist_directory=config.DB_DIR,
-            embedding_function=self.embeddings
-        )
+        if VECTOR_BACKEND == "pinecone":
+            # Pinecone: ใช้ namespace แยก core/recent ใน index เดียว
+            # text ถูกเก็บไว้ใน metadata field "text" (ดู scripts/migrate_chroma_to_pinecone.py)
+            self.core_db = PineconeVectorStore(
+                index_name=config.PINECONE_INDEX,
+                embedding=self.embeddings,
+                namespace=config.PINECONE_NAMESPACE_CORE,
+                text_key="text",
+            )
+            self.recent_db = PineconeVectorStore(
+                index_name=config.PINECONE_INDEX,
+                embedding=self.embeddings,
+                namespace=config.PINECONE_NAMESPACE_RECENT,
+                text_key="text",
+            )
+        else:
+            self.core_db = Chroma(
+                collection_name=config.COLLECTION_CORE,
+                persist_directory=config.DB_DIR,
+                embedding_function=self.embeddings
+            )
+            self.recent_db = Chroma(
+                collection_name=config.COLLECTION_RECENT,
+                persist_directory=config.DB_DIR,
+                embedding_function=self.embeddings
+            )
 
     def _get_bm25_retriever(self, docs):
         """Builds a Thai-aware BM25 retriever from a list of documents."""
         if not docs:
             return None
         try:
-            from pythainlp.tokenize import word_tokenize
-            # ใช้ word_tokenize จาก PyThaiNLP เป็นฟังก์ชันตัดคำให้กับ BM25
-            return BM25Retriever.from_documents(docs, preprocess_func=word_tokenize)
-        except ImportError:
-            print("Warning: pythainlp not installed. Falling back to default split.")
-            return BM25Retriever.from_documents(docs)
+            try:
+                from pythainlp.tokenize import word_tokenize
+                return BM25Retriever.from_documents(docs, preprocess_func=word_tokenize)
+            except ImportError:
+                return BM25Retriever.from_documents(docs)
+        except (ImportError, Exception) as e:
+            # ถ้าไม่มี rank_bm25 หรือล้ม ให้ fallback ไปใช้ vector rank 100%
+            return None
 
     @staticmethod
     def detect_target_law(query):

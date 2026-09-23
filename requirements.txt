@@ -24,6 +24,10 @@ httpx
 google-cloud-firestore
 google-cloud-bigquery
 
+# --- Vector store: Pinecone (ตั้ง VECTOR_STORE=pinecone เพื่อใช้ ไม่มี cold start download) ---
+pinecone
+langchain-pinecone
+
 # --- Channels ---
 # LINE: ใช้ httpx ตรงๆ (ไม่มี SDK เพิ่ม)
 discord.py>=2.3.0

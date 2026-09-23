@@ -96,6 +96,14 @@ EMBEDDING_MODEL_NAME = os.environ.get(
 COLLECTION_CORE = "core_law"
 COLLECTION_RECENT = "recent_law"
 
+# --- Vector store backend: "chroma" (default, local disk) หรือ "pinecone" (cloud) ---
+# pinecone = ไม่ต้อง rsync chroma_db ตอน startup → ไม่มี cold start delay
+VECTOR_STORE = os.environ.get("VECTOR_STORE", "chroma")
+PINECONE_API_KEY = os.environ.get("PINECONE_KEY") or os.environ.get("PINECONE_API_KEY", "")
+PINECONE_INDEX = os.environ.get("PINECONE_INDEX", "thai-law")
+PINECONE_NAMESPACE_CORE = os.environ.get("PINECONE_NAMESPACE_CORE", "core_law")
+PINECONE_NAMESPACE_RECENT = os.environ.get("PINECONE_NAMESPACE_RECENT", "recent_law")
+
 # Retrieval
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
