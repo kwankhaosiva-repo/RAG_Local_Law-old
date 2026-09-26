@@ -1,5 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import Runnable
 import os
 
 import config
@@ -131,19 +132,23 @@ def _provider_ready(provider: str) -> bool:
     return bool(getattr(config, key_name, "") or os.environ.get(key_name))
 
 
-class FallbackLLM:
+class FallbackLLM(Runnable):
     """ห่อ LLM หลายตัวเรียงตามลำดับ — ตัวไหน error/quota หมด ข้ามไปตัวถัดไปทันที
-    ใช้ API เดียวกับ LangChain chat model (invoke / bind) เพื่อแทนที่ได้ seamless
+
+    Inherit จาก langchain Runnable แท้จริง เพื่อให้ใช้ใน chain แบบ
+    `prompt | llm | parser` ได้ปกติ — เดิมเป็น plain class ทำให้ LangChain
+    ปฏิเสธ ("Expected a Runnable")
     """
 
     def __init__(self, llms: list):
+        super().__init__()
         self._llms = llms
 
-    def invoke(self, *args, **kwargs):
+    def invoke(self, input_data, config=None, **kwargs):
         last_err: Exception | None = None
         for llm in self._llms:
             try:
-                return llm.invoke(*args, **kwargs)
+                return llm.invoke(input_data, config=config, **kwargs)
             except Exception as e:
                 last_err = e
                 print(
@@ -153,6 +158,7 @@ class FallbackLLM:
         raise last_err  # ทุกตัวล้มเหลว
 
     def bind(self, **kwargs):
+        # bind ของ chat model (เช่น tools) — fallback ต่อระดับ invoke ตามเดิม
         return FallbackLLM([llm.bind(**kwargs) for llm in self._llms])
 
     @property

@@ -1,6 +1,8 @@
 # Thai Legal RAG Chatbot
 
-โปรเจกต์นี้เป็น **แชทบอทตอบคำถามกฎหมายไทยแบบหลายช่องทาง (Multi-channel)** — Web, LINE, Discord, OpenClaw และ CLI — คุยได้หลายเทิร์น (จำ context ต่อเนื่อง), ตอบพร้อมอ้างอิงมาตรา/ชื่อกฎหมาย, รองรับ **LLM ทั้ง local (Ollama) และ cloud (OpenAI/Anthropic/Google/OpenRouter)** และ **อัปเดตกฎหมายใหม่จากราชกิจจานุเบกษาอัตโนมัติทุกสัปดาห์**
+โปรเจกต์นี้เป็น **แชทบอทตอบคำถามกฎหมายไทยแบบหลายช่องทาง (Multi-channel)** — Web, LINE, Discord, OpenClaw และ CLI — คุยได้หลายเทิร์น (จำ context ต่อเนื่อง), ตอบพร้อมอ้างอิงมาตรา/ชื่อกฎหมาย, รองรับ **LLM ทั้ง local (Ollama) และ cloud (OpenAI/Anthropic/Google/OpenRouter/UNOROUTER/Groq/Mistral) พร้อม failover chain อัตโนมัติ**, **vector store เลือกได้ระหว่าง ChromaDB (local) กับ Pinecone (cloud)** และ **อัปเดตกฎหมายใหม่จากราชกิจจานุเบกษาอัตโนมัติทุกสัปดาห์**
+
+Live: https://rag-law-226111202600.asia-southeast1.run.app (Cloud Run, project `rag-law-509304`)
 
 ---
 
@@ -9,77 +11,88 @@
 ```
 ผู้ใช้ ──> Web Chat UI (FastAPI /) ─────────┐
        ──> LINE Messaging API (/line/webhook) ├─> runtime (shared agent) ──> LangGraph Agent
-       ──> OpenClaw Gateway (/openclaw/webhook)┘                                    │
-       ──> Discord Bot (แยก process) ───────────────────────────────────────────────┤
-       ──> CLI (python src/main.py) ────────────────────────────────────────────────┤
-                                                                                    ▼
-                                                              Retriever (Hybrid RRF: Vector + Thai BM25)
-                                                                                    │
-                                                                    ChromaDB (core_law + recent_law)
-                                                                                    ▲
-                                                       Ratchakitcha Crawler (อัตโนมัติทุกสัปดาห์)
+       ──> OpenClaw Gateway (/openclaw/webhook)┘            │                        │
+       ──> Discord Bot (แยก process) ───────────────────────┤                        │
+       ──> CLI (python src/main.py) ────────────────────────┘                        ▼
+                                              Retriever (Hybrid RRF: Vector + Thai BM25)
+                                                                              │
+                                            Vector Store: ChromaDB (local disk) หรือ Pinecone (cloud)
+                                                       │                        ▲
+                                                       ▼                        │
+                                                 LLMClient (failover chain)     │
+                                                       │                  Ratchakitcha Crawler
+                                                       ▼                  (อัตโนมัติทุกสัปดาห์)
+                                     UNOROUTER / OpenRouter / Groq / Ollama ฯลฯ
+
+ระบบเสริม: Firestore (rag-law-db: ประวัติแชท) · BigQuery (rag_law_query: analytics) · GCS (chroma_db snapshot)
 ```
 
 ### 1. LangGraph Conversation Agent (`src/agent.py`) — สมองของแชทบอท
-แทน pipeline เดิมที่ตอบเดี่ยวๆ ด้วย StateGraph ที่มี 4 ขั้นตอน:
+StateGraph 4 ขั้นตอน:
 
 *   **Route Intent:** แยกว่าเป็น "คำถามกฎหมาย" (→ ค้นฐานกฎหมาย) หรือ "คุยทั่วไป" (→ ตอบแบบแชทสุภาพ ไม่ต้องค้น)
-*   **Query Rewrite:** คำถามในเทิร์นต่อๆ มา (เช่น "แล้วมาตราถัดไปล่ะ") จะถูก LLM รวมกับประวัติแชทให้เป็นคำถามสมบูรณ์ก่อนค้น — **แทนการฉีดชื่อกฎหมายตายตัวแบบเดิม**
-*   **Hybrid Retrieval + Doc Grading:** ดึงเอกสารด้วย Vector + BM25 + RRF แล้วให้ LLM ตรวจก่อนว่าเนื้อหาตอบคำถามได้จริงไหม — ถ้าไม่ จะตอบอย่างสุภาพว่าไม่พบข้อมูล (ลด hallucination)
-*   **Multi-turn Memory:** เก็บประวัติต่อ session ด้วย `SqliteSaver` (LangGraph checkpointer) — คุยต่อเนื่องได้โดยส่งแค่ `session_id`
+*   **Query Rewrite:** คำถามเทิร์นต่อๆ มา (เช่น "แล้วมาตราถัดไปล่ะ") ถูก LLM รวมกับประวัติแชทให้เป็นคำถามสมบูรณ์ก่อนค้น
+*   **Hybrid Retrieval + Doc Grading:** ดึงเอกสารด้วย Vector + BM25 + RRF แล้วให้ LLM ตรวจก่อนว่าเนื้อหาตอบได้จริงไหม — ถ้าไม่ ตอบอย่างสุภาพว่าไม่พบข้อมูล (ลด hallucination)
+*   **Multi-turn Memory:** เก็บประวัติต่อ session ด้วย `SqliteSaver` (LangGraph checkpointer) + **บันทึกซ้ำลง Firestore** ไว้ตรวจสอบย้อนหลัง
 
 ### 2. Multi-channel Chat (ทุกช่องทางใช้ agent ตัวเดียวกันผ่าน `src/runtime.py`)
 
 | ช่องทาง | ไฟล์ | วิธีรัน | หมายเหตุ |
 |---|---|---|---|
-| **Web Chat** | `src/server.py` + `src/web/index.html` | `python src/server.py` → http://localhost:8000 | มี `POST /chat`, `POST /reset`, หน้าเว็บแชทไทย |
-| **LINE** | `src/line_bot.py` | mount ใน server อัตโนมัติ | webhook `POST /line/webhook`, ตรวจ `X-Line-Signature`, แบ่งข้อความยาวเป็นหลาย bubble, คำสั่ง `ล้างแชท` |
-| **Discord** | `src/discord_bot.py` | `python src/discord_bot.py` (แยก process) | `!ask <คำถาม>`, mention บอท, slash `/law`, ต่อ session ต่อ channel |
-| **OpenClaw** | `src/openclaw_bridge.py` | mount ใน server อัตโนมัติ | webhook `POST /openclaw/webhook` + secret auth |
+| **Web Chat** | `src/server.py` + `src/web/index.html` | `python src/server.py` | UI ปรับแต่งได้: มาสคอต, ฟอนต์ 6 แบบ, ธีมมืด/สว่าง, layout แชท/เอกสาร, การ์ดอ้างอิงคลิกได้ |
+| **LINE** | `src/line_bot.py` | mount ใน server อัตโนมัติ | ตอบ 200 ทันที + ประมวลผล background (LINE timeout 2 วิ), Reply API ฟรี + Push fallback, ตรวจ `X-Line-Signature` |
+| **Discord** | `src/discord_bot.py` | `python src/discord_bot.py` (แยก process) | `!ask <คำถาม>`, mention, slash `/law` |
+| **OpenClaw** | `src/openclaw_bridge.py` | mount ใน server อัตโนมัติ | webhook + secret auth |
 | **CLI** | `src/main.py` | `python src/main.py` | คำสั่ง `reset`, `exit` |
 
-ทุก adapter เรียก `runtime.ask(text, session_id)` / `runtime.reset(session_id)` — agent โหลดครั้งเดียวต่อ process ใช้ร่วมกันทุกช่องทาง
+### 3. LLM หลาย Provider + Failover Chain (`src/llm_client.py`)
 
-### 3. Data Ingestion (การนำเข้าข้อมูล)
-*   **Thai Law Section Splitter (ใหม่):** `src/thai_law_splitter.py` แก้ปัญหา truncation ของหัวมาตรา:
-    *   จับรูปแบบครบ: `มาตรา 5`, `มาตราที่ 7/1`, `มาตรา ๓๙` (เลขไทย), `ข้อที่ 5`, คำเกิน (ทวิ/ตรี/จัตวา)
-    *   **ไม่มีการตัดกลางคำ** — chunk ที่ซอยต่อจากมาตรายาวๆ จะมี header "ส่วนของ: มาตรา X (ส่วนที่ n/m)" ติดทุก chunk
-    *   วิธีเดิม regex จับ "มาตราที่ 7/1" ได้เพี้ยนเป็น "มาตราท" (ตัดกลางคำ) และ chunk ที่ 2..n ของมาตราเดียวกันหายหัวมาตรา — ตรวจสอบด้วย `python src/test_section_splitter.py` (ALL TESTS PASSED ✅)
-*   **Hierarchical Metadata:** `title`, `section_id`, `hierarchy_level`, `publish_date` ฝังในทุก Chunk
-*   **Prefix Context Injection:** ชื่อกฎหมาย+มาตราแปะหัวทุก Chunk เสมอ
-*   **Generic Law Detection:** Retriever ตรวจจับชื่อกฎหมายจากคำถามด้วย regex (`detect_target_law`) รองรับกฎหมายทุกฉบับ
+ตั้ง `LLM_PROVIDER` เป็น provider หลัก แล้วกำหนด `LLM_FAILOVER_CHAIN` — **ถ้าตัวหลัก quota หมด/ล่ม จะส่งต่อ prompt+context เดิมให้ตัวถัดไปทันที** (provider ที่ไม่มี key ถูกข้ามอัตโนมัติ):
 
-### 4. LLM รองรับหลาย Provider (`src/llm_client.py`)
-ตั้งผ่าน `.env` (ดู `.env_example`):
+```
+LLM_FAILOVER_CHAIN=openrouter,unorouter,groq,mistral,ollama
+```
 
-| Provider | env | โมเดลแนะนำ |
+| Provider | env | หมายเหตุ |
 |---|---|---|
-| **Ollama (local, default)** | `LLM_PROVIDER=ollama` + `OLLAMA_HOST` + `LLM_MODEL_NAME` | llama3.2 |
-| **OpenAI** | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` | gpt-4o-mini |
-| **Anthropic** | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` | claude-3-5-haiku |
-| **Google** | `LLM_PROVIDER=google` + `GOOGLE_API_KEY` | gemini-2.0-flash |
-| **OpenRouter** | `LLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | openai/gpt-4o-mini |
+| **OpenRouter** (แนะนำ) | `LLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | มีโมเดล `:free`, ตัวใหญ่น่าเชื่อถือ |
+| **UNOROUTER** | `LLM_PROVIDER=unorouter` + `UNOROUTER_API_KEY` | OpenAI-compatible ฟรี |
+| **Gateway ทั่วไป** | `LLM_PROVIDER=gateway` + `GATEWAY_BASE_URL/_API_KEY/_MODEL` | ใช้ได้ทุกเจ้ามาตรฐาน OpenAI (9router ฯลฯ) |
+| **Groq / Mistral / Cloudflare** | `GROQ_API` / `MISTRAL_API` / `CLOUDFLARE_API` | free tier |
+| **OpenAI / Anthropic / Google** | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` | Gemini ฟรีต้องผูก billing (ปิดไว้ก่อนใน config) |
+| **Ollama (local)** | `LLM_PROVIDER=ollama` + `LLM_MODEL_NAME` | หรือผ่าน ngrok — ดู `docs/ngrok_local_llm.txt` |
 
-สลับ provider ได้โดยไม่แก้โค้ด — เหมาะกับการ deploy บน cloud ที่ไม่มี GPU
+### 4. Vector Store เลือกได้ (`VECTOR_STORE`) — ChromaDB หรือ Pinecone
 
-### 5. Ratchakitcha Crawler (`src/crawl_ratchakitcha.py`) — อัปเดตกฎหมายใหม่อัตโนมัติ
-ดึงรายการประกาศใหม่จาก 2 แหล่ง (เลือกด้วย `RATCHAKITCHA_SOURCE` ใน `.env`):
-*   **`hf` (default, แนะนำ):** meta รายเดือนจากโครงการ **Open Law Data Thailand** บน Hugging Face (`open-law-data-thailand/soc-ratchakitcha`) — ได้ `source_url` ของ PDF มาตรงๆ **ไม่ต้องสมัคร token** อัปเดตทุกวันโดยทีมโครงการ
-*   **`api`:** Web Service ทางการ `api.soc.go.th` — ต้องสมัคร Token ที่ https://www2.soc.go.th แล้วตั้ง `RATCHAKITCHA_TOKEN` ใน `.env`
+| โหมด | การทำงาน | เหมาะกับ |
+|---|---|---|
+| **`chroma`** (default) | อ่านจาก local disk — บน Cloud Run จะ **rsync จาก GCS เป็น background** หลัง bind port (`src/db_sync.py`), คำถามแรกรอ sync เสร็จ (สูงสุด 5 นาที) | local dev / คุ้ม cost |
+| **`pinecone`** | cloud vector DB (index `thai-law`, namespace `core_law`/`recent_law`) — **ไม่ต้องโหลดอะไรเลยตอน startup → ไม่มี cold start download** | Cloud Run / production |
 
-ทั้งสองแหล่งใช้ pipeline เดียวกัน: โหลด PDF → extract ข้อความ (PyMuPDF) → แบ่งตามมาตรา/ข้อ (splitter ใหม่) → ingest เข้า collection `recent_law` + **Deduplicate ด้วย hash (title + วันประกาศ)** ใน SQLite กัน ingest ซ้ำ
+Migration chroma → Pinecone: `python scripts/migrate_chroma_to_pinecone.py` (มี `--dry-run`, dimension 384, metric cosine)
+
+### 5. Data Ingestion (การนำเข้าข้อมูล)
+*   **Thai Law Section Splitter (`src/thai_law_splitter.py`):** จับหัวมาตราครบทุกรูปแบบ (`มาตรา 5`, `มาตราที่ 7/1`, `มาตรา ๓๙` เลขไทย, `ข้อที่ 5`, ทวิ/ตรี/จัตวา) ไม่ตัดกลางคำ — chunk ต่อเนื่องมี header "ส่วนของ: มาตรา X (ส่วนที่ n/m)" ตรวจด้วย `python src/test_section_splitter.py`
+*   **Hierarchical Metadata:** `title`, `section_id`, `hierarchy_level`, `publish_date` ในทุก chunk + **Prefix Context Injection** ชื่อกฎหมาย+มาตราแปะหัวทุก chunk
+*   **Generic Law Detection:** `detect_target_law` ตรวจชื่อกฎหมายจากคำถามด้วย regex รองรับทุกฉบับ
+
+### 6. Ratchakitcha Crawler (`src/crawl_ratchakitcha.py`) — อัปเดตกฎหมายใหม่อัตโนมัติ
+*   **`hf` (default):** Open Law Data Thailand บน Hugging Face — ไม่ต้อง token
+*   **`api`:** `api.soc.go.th` ทางการ — ต้องสมัคร Token (`RATCHAKITCHA_TOKEN`)
+
+Pipeline: PDF → PyMuPDF → splitter → ingest `recent_law` + dedupe ด้วย hash (title + วันประกาศ)
 
 ```bash
-python src/crawl_ratchakitcha.py                 # รันครั้งเดียว (source ตาม .env — default hf)
-python src/crawl_ratchakitcha.py --limit 50     # จำกัดจำนวนฉบับต่อรัน
-python src/crawl_ratchakitcha.py --source api   # บังคับใช้ API ทางการ (ต้องมี token)
-python src/crawl_ratchakitcha.py --weekly       # รันต่อเนื่องทุกสัปดาห์
+python src/crawl_ratchakitcha.py --weekly   # รันต่อเนื่องทุกสัปดาห์
 ```
-ตั้งจำนวนเดือนย้อนหลังที่จะดึงจาก HF ได้ด้วย `RATCHAKITCHA_HF_MONTHS` (default 1)
 
-### 6. Generation & Evaluation (คงเดิม)
+### 7. User Data & Analytics
+*   **Firestore (`rag-law-db`):** ประวัติแชททุกเทิร์น → `chat_sessions/<session_id>/turns` (`src/firestore_db.py`), `/reset` ลบประวัติด้วย — fail-safe: ถ้าใช้ไม่ได้ระบบยังตอบได้ปกติ
+*   **BigQuery (`rag_law_query.queries`):** log คำถาม/คำตอบไว้วิเคราะห์คำถามยอดนิยม (`src/analytics.py`)
+
+### 8. Generation & Evaluation
 *   **Chain-of-Thought + Strict Polarity:** ยก quote ก่อนแล้ว "สรุป:" ฟันธงชัดเจน
-*   **LLM-as-a-Judge:** `src/evaluate.py` ใช้ประเมิน accuracy ก่อน/หลังปรับระบบ
+*   **LLM-as-a-Judge:** `src/evaluate.py` วัด accuracy เทียบ dataset (WangchanX-Legal-ThaiCCL-RAG)
 
 ---
 
@@ -94,30 +107,29 @@ ollama pull llama3.2          # ถ้าใช้ LLM local
 python src/ingest_core.py
 python src/ingest_recent.py
 
-# 2) รันแชทบอท — เลือกช่องทางที่ต้องการ
+# 2) (ทางเลือก) migrate ขึ้น Pinecone แล้วตั้ง VECTOR_STORE=pinecone ใน .env
+pip install pinecone langchain-pinecone
+python scripts/migrate_chroma_to_pinecone.py --dry-run
+python scripts/migrate_chroma_to_pinecone.py
+
+# 3) รันแชทบอท
 python src/server.py                    # Web + LINE + OpenClaw ใน process เดียว
 python src/discord_bot.py               # Discord (แยก process)
 python src/main.py                      # CLI แบบหลายเทิร์น
 
-# 3) (ทางเลือก) อัปเดตกฎหมายใหม่จากราชกิจจานุเบกษา
-python src/crawl_ratchakitcha.py            # ครั้งเดียว
-python src/crawl_ratchakitcha.py --weekly   # ทุกสัปดาห์
-
-# 4) (ทางเลือก) ทดสอบ splitter กัน truncation หัวมาตรา
+# 4) (ทางเลือก) อัปเดตกฎหมายใหม่ / ทดสอบ / ประเมิน
+python src/crawl_ratchakitcha.py --weekly
 python src/test_section_splitter.py
-
-# 5) (แนะนำ) Dev Test Mode — ทดสอบทั้งระบบด้วย Ollama local ก่อน deploy ขึ้น GCP
-#    ไม่ต้องมี LINE/Discord/cloud API key — ทดสอบ LLM, retriever, agent, multi-turn, intent routing ครบ
-python src/test_local.py                       # ใช้ mistral-small3.2:24b (default)
-python src/test_local.py --model llama3.2     # สลับโมเดล
-python src/test_local.py --quick              # ข้าม multi-turn (เร็วขึ้น)
+python src/test_local.py --quick        # dev test ด้วย Ollama ไม่ต้องมี cloud key
+python src/evaluate.py                  # วัด accuracy
 ```
 
 ### ตั้งค่า LINE Messaging API
 1. สร้าง channel ที่ https://developers.line.biz/console/ (Messaging API)
-2. คัดลอก `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_CHANNEL_SECRET` ใส่ `.env`
-3. รัน server แล้วตั้ง Webhook URL ใน console: `https://<your-domain>/line/webhook`
-4. ทดสอบ: `curl https://<your-domain>/line/health` ต้องได้ `{"ok": true, "configured": true}`
+2. ใส่ `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_CHANNEL_SECRET` ใน `.env` (หรือ secret `env_law`)
+3. Webhook URL: `https://<your-domain>/line/webhook` → Verify → Enable
+4. **ปิด** auto-reply/greeting ของ Official Account และอย่าเปิด "Use grouped responses"
+5. ทดสอบ: `curl https://<your-domain>/line/health` → `{"ok": true, "configured": true}`
 
 ### ตั้งค่า Discord Bot
 1. สร้าง Application ที่ https://discord.com/developers/applications → Bot → copy token
@@ -125,15 +137,10 @@ python src/test_local.py --quick              # ข้าม multi-turn (เร�
 3. เชิญบอทด้วย OAuth2 URL (scopes: `bot` + `applications.commands`)
 4. รัน `python src/discord_bot.py` — ใช้ได้ทั้ง `!ask`, mention, และ slash `/law`
 
-### การเชื่อม OpenClaw (เปิดช่องทาง Telegram/WhatsApp ฯลฯ)
+### การเชื่อม OpenClaw (Telegram/WhatsApp ฯลฯ)
 1. รัน server: `python src/server.py`
-2. ใน config ของ OpenClaw gateway ชี้ webhook ไปที่ `POST http://<host>:8000/openclaw/webhook` ส่ง `{chat_id, text}`
-3. (แนะนำ) ตั้ง `OPENCLAW_SECRET=...` ทั้งสองฝั่งเพื่อยืนยันตัวตน
-
-### การประเมินผล
-```bash
-python src/evaluate.py   # วัด accuracy เทียบกับ dataset ข้อสอบ (WangchanX-Legal-ThaiCCL-RAG)
-```
+2. ชี้ webhook ของ OpenClaw gateway ไปที่ `POST http://<host>:8000/openclaw/webhook` ส่ง `{chat_id, text}`
+3. (แนะนำ) ตั้ง `OPENCLAW_SECRET=...` ทั้งสองฝั่ง
 
 ---
 
@@ -142,25 +149,32 @@ python src/evaluate.py   # วัด accuracy เทียบกับ dataset �
 ```bash
 # Build + รัน local (mount chroma_db เข้า container)
 docker build -t thai-law-chatbot .
-docker run -p 8000:8000 --env-file .env -v $(pwd)/chroma_db:/app/chroma_db thai-law-chatbot
+docker run -p 8080:8080 --env-file .env -v $(pwd)/chroma_db:/app/chroma_db thai-law-chatbot
 ```
 
-Deploy ขึ้น Google Cloud Run (build, secrets, Cloud Scheduler สำหรับ crawler, Discord บน VM) — ดูคำสั่งฉบับเต็มใน **`gcp_deploy.txt`**
+Deploy บน Google Cloud Run:
+*   **โหมด chroma:** chroma_db (~5GB) ถูก rsync จาก GCS (`gs://chroma-db-law`) เป็น background หลัง bind port → health check ผ่านทันที, ใช้ `--memory 4Gi` (embedding model + index กิน RAM)
+*   **โหมด pinecone:** ไม่ต้อง sync อะไร ใช้ `--memory 2Gi` พอ (RAM หลักคือ embedding model PyTorch)
+*   **ห้ามใช้ default 512Mi** — อาการ: `POST /chat` → 503 + "Memory limit exceeded" ใน log
+*   env ทั้งหมดอัปเป็นก้อนเดียวใน Secret Manager (`env_law`) → container รับเป็น `ENV_LAW` แล้ว parse ใน `src/config.py`
+
+คำสั่งฉบับเต็ม: **`gcp_deploy_gcs.txt`** | Local LLM ผ่าน ngrok: **`docs/ngrok_local_llm.txt`**
 
 ---
 
 ## เทคโนโลยีที่ใช้งาน (Tech Stack)
 
 *   **LangGraph:** สมองของ agent — StateGraph, multi-turn memory (SqliteSaver), intent routing, doc grading
-*   **LangChain:** Data loaders, prompts, output parsers และ hybrid retriever
-*   **ChromaDB:** Vector Database แบบ Offline (Local) สอง collection: `core_law` + `recent_law`
-*   **LLM:** Ollama (local) หรือ OpenAI / Anthropic / Google / OpenRouter (cloud) — สลับได้ผ่าน `.env`
-*   **HuggingFace Embeddings:** multilingual MiniLM สำหรับ semantic search
+*   **LangChain:** loaders, prompts, output parsers, hybrid retriever, `langchain-pinecone`
+*   **Vector Store:** ChromaDB (local) หรือ Pinecone (cloud serverless) — สลับด้วย `VECTOR_STORE`
+*   **LLM:** failover chain หลาย provider — OpenRouter / UNOROUTER / Groq / Mistral / OpenAI / Anthropic / Ollama — สลับได้ผ่าน env ไม่แก้โค้ด
+*   **HuggingFace Embeddings:** multilingual MiniLM (384 dim) สำหรับ semantic search
 *   **PyThaiNLP:** ตัดคำไทยสำหรับ BM25
-*   **FastAPI + Vanilla JS:** Web Chat UI + API
+*   **FastAPI + Vanilla JS:** Web Chat UI ปรับแต่งได้ (ธีม/ฟอนต์/มาสคอต/layout) + API
 *   **LINE Messaging API / discord.py / OpenClaw:** ช่องทางแชทภายนอก
+*   **Google Cloud:** Cloud Run (deploy) · Secret Manager (env_law) · Firestore `rag-law-db` (ประวัติแชท) · BigQuery `rag_law_query` (analytics) · GCS `chroma-db-law` (snapshot) · Cloud Build (CI)
 *   **PyMuPDF + requests:** Ratchakitcha crawler
-*   **Docker + Cloud Run:** deploy บน cloud
+*   **Docker + gcloud CLI:** containerization และ deploy
 
 ---
 

@@ -31,7 +31,9 @@
 #        --project rag-law-509304 \
 #        --region ${REGION} \
 #        --port 8080 \
-#        --memory 4Gi --cpu 2 \
+#        --memory 2Gi --cpu 2 \   # *** ห้ามใช้ default 512Mi — embedding model ใช้ RAM ~1GB → OOM kill
+#                                 #    (อาการ: POST /chat → 503 + "Memory limit exceeded" ใน log)
+#                                 #    โหมด pinecone ใช้ 2Gi พอ / โหมด chroma ต้อง 4Gi
 #        --min-instances 1 --max-instances 5 \
 #        --timeout 300 --concurrency 10 \
 #        --allow-unauthenticated \
