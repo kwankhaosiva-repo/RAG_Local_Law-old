@@ -55,7 +55,7 @@ OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 # OpenAI-compatible providers (ใช้ langchain-openai ร่วมกัน)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY") or os.environ.get("GROQ_API", "")
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")  # llama-3.3-70b-versatile ถูกปิดบน free tier 16 ส.ค. 2026
 MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY") or os.environ.get("MISTRAL_API", "")
 MISTRAL_BASE_URL = os.environ.get("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
 MISTRAL_MODEL = os.environ.get("MISTRAL_MODEL", "mistral-small-latest")
@@ -81,7 +81,8 @@ GATEWAY_MODEL = os.environ.get("GATEWAY_MODEL", "gpt-4o-mini")
 # --- UNOROUTER (unorouter.com — free OpenAI-compatible API) ---
 # key เก็บใน Secret Manager แล้ว (secret env_law)
 UNOROUTER_API_KEY = os.environ.get("UNOROUTER_API_KEY", "")
-UNOROUTER_BASE_URL = os.environ.get("UNOROUTER_BASE_URL", "https://unorouter.com/v1")
+# base URL ที่ถูกต้องคือ api.unorouter.com — unorouter.com/v1 (เว็บหลัก) จะ 404
+UNOROUTER_BASE_URL = os.environ.get("UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
 UNOROUTER_MODEL = os.environ.get("UNOROUTER_MODEL", "gpt-4o-mini")
 
 # --- Failover chain: ถ้า LLM หลักล้ม (quota หมด/ล่ม) ส่งต่อ prompt+context เดิม

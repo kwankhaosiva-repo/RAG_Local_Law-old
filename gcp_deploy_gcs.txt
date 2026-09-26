@@ -39,7 +39,7 @@
 #        --min-instances 0 --max-instances 5 \
 #        --timeout 300 --concurrency 10 \
 #        --allow-unauthenticated \
-#        --set-env-vars "LLM_PROVIDER=gateway,GATEWAY_BASE_URL=https://unorouter.com/v1,GATEWAY_MODEL=gpt-4o-mini,GCS_CHROMA_BUCKET=gs://chroma-db-law,GCS_CHROMA_PREFIX=chroma_db,FIRESTORE_DB=rag-law-db" \
+#        --set-env-vars "LLM_PROVIDER=unorouter,GCS_CHROMA_BUCKET=gs://chroma-db-law,GCS_CHROMA_PREFIX=chroma_db,FIRESTORE_DB=rag-law-db" \
 #        --set-secrets "ENV_LAW=env_law:latest"
 #
 # *** LLM setup (Gemini ปิดไว้ก่อน — free key ต้องผูก billing) ***
