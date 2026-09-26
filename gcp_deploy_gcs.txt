@@ -31,10 +31,12 @@
 #        --project rag-law-509304 \
 #        --region ${REGION} \
 #        --port 8080 \
-#        --memory 2Gi --cpu 2 \   # *** ห้ามใช้ default 512Mi — embedding model ใช้ RAM ~1GB → OOM kill
+#        --memory 4Gi --cpu 2 \   # *** ห้ามใช้ default 512Mi — embedding model ใช้ RAM ~1GB → OOM kill
 #                                 #    (อาการ: POST /chat → 503 + "Memory limit exceeded" ใน log)
-#                                 #    โหมด pinecone ใช้ 2Gi พอ / โหมด chroma ต้อง 4Gi
-#        --min-instances 1 --max-instances 5 \
+#                                 #    2Gi พิสูจน์แล้วยัง OOM (2061MiB) ทั้งโหมด pinecone/chroma → ใช้ 4Gi
+#                                 #    ต้นทุน: min-instances=1 ≈ $140/เดือน (4Gi+2CPU ตื่อตลอด)
+#                                 #    ถ้า traffic น้อย แนะนำ --min-instances 0 ≈ $0 (อยู่ใน free tier)
+#        --min-instances 0 --max-instances 5 \
 #        --timeout 300 --concurrency 10 \
 #        --allow-unauthenticated \
 #        --set-env-vars "LLM_PROVIDER=gateway,GATEWAY_BASE_URL=https://unorouter.com/v1,GATEWAY_MODEL=gpt-4o-mini,GCS_CHROMA_BUCKET=gs://chroma-db-law,GCS_CHROMA_PREFIX=chroma_db,FIRESTORE_DB=rag-law-db" \
@@ -42,19 +44,20 @@
 #
 # *** LLM setup (Gemini ปิดไว้ก่อน — free key ต้องผูก billing) ***
 # ใช้ UNOROUTER เป็น primary แล้วมี failover chain ต่ออัตโนมัติ:
-#   LLM_PROVIDER=unorouter  (หรือ LLM_PROVIDER=gateway + GATEWAY_* ก็ได้)
+#   LLM_PROVIDER=unorouter  (ถ้าไม่ตั้ง code ใหม่จะ deduce เป็น unorouter เองเมื่อมี UNOROUTER_API_KEY)
 #   default chain: unorouter → groq → mistral → ollama
 #   (provider ที่ไม่มี key ถูกข้ามอัตโนมัติ — ใส่ GROQ_API/MISTRAL_API เพิ่มใน env_law
 #    ได้เลย ไม่ต้องแก้ code)
 # แบบ local Ollama ผ่าน ngrok: ดู docs/ngrok_local_llm.txt
 #
-# เพิ่ม GATEWAY_API_KEY / GROQ_API / MISTRAL_API ลงใน secret env_law ได้เลย เช่น:
-#   GATEWAY_BASE_URL=https://unorouter.com/v1
-#   GATEWAY_API_KEY=...
-#   GATEWAY_MODEL=gpt-4o-mini
+# เพิ่ม LLM_PROVIDER=unorouter ลงใน secret env_law ด้วย (แนะนำ — secret เก่าที่ไม่มี
+# บรรทัดนี้ก็ยัง work เพราะ code deduce จาก UNOROUTER_API_KEY ให้เอง)
+# ค่าที่ควรมีใน secret env_law:
+#   LLM_PROVIDER=unorouter
+#   UNOROUTER_API_KEY=...
 #   GROQ_API=gsk_...
 #   MISTRAL_API=...
-#   LLM_FAILOVER_CHAIN=groq,mistral
+#   LLM_FAILOVER_CHAIN=unorouter,groq,mistral
 #
 # secret "env_law" เก็บ env ทั้งหมดเป็นก้อนเดียว (รูปแบบ .env) เช่น:
 #   OPENAI_API_KEY=sk-...

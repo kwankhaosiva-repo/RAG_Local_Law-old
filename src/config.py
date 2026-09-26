@@ -34,8 +34,8 @@ DB_DIR = os.path.join(PROJECT_ROOT, "chroma_db")
 RECENT_LAW_DIR = os.path.join(DATASETS_DIR, "iapp_2025")
 
 # Models
-# LLM_PROVIDER: "ollama" (local, default) | "openai" | "anthropic" | "google" | "openrouter"
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
+# LLM_PROVIDER: "unorouter" (default ถ้ามี key) | "ollama" | "openai" | "anthropic" | "google" | "openrouter"
+# (ประกาศด้านล่าง หลังจากอ่าน UNOROUTER_API_KEY แล้ว — ถ้าไม่ตั้งจะใช้ unorouter เมื่อมี key, ไม่งั้น ollama)
 LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", "llama3.2")  # Ollama model name
 
 # --- Cloud LLM (ใช้เมื่อ LLM_PROVIDER != "ollama") ---
@@ -67,6 +67,10 @@ CLOUDFLARE_BASE_URL = os.environ.get(
 )
 CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST") or os.environ.get("OLLAMA_API", "http://localhost:11434")
+# ถ้าไม่มี cloud provider ใด ๆ ใช้ได้ (ไม่มี key) → ค่อย fallback ไป ollama ตอนสร้าง chain
+# (LLM_PROVIDER ต้องเป็น cloud อย่าง unorouter/openrouter ไม่งั้นต้องรอ connect localhost:11434 ก่อนทุกครั้ง)
+_DEFAULT_PROVIDER = "unorouter" if os.environ.get("UNOROUTER_API_KEY") else "ollama"
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", _DEFAULT_PROVIDER)
 
 # --- Generic OpenAI-compatible gateway (9router.com ฯลฯ) ---
 # ใช้เมื่อ LLM_PROVIDER=gateway — รองรับทุกเจ้าที่ API เป็นมาตรฐาน OpenAI
@@ -110,7 +114,12 @@ CHUNK_OVERLAP = 200
 RETRIEVAL_K = 5
 
 # --- Conversation Agent / Sessions ---
-SESSION_DB_PATH = os.path.join(PROJECT_ROOT, "chroma_db", "sessions.sqlite")
+# บน Cloud Run โฟลเดอร์ /app/chroma_db ไม่มีอยู่และ appuser เขียน /app ไม่ได้
+# → เก็บ sessions.sqlite ใน /tmp (writable เสมอ) ถ้า chroma_db ไม่มีจริง
+if os.path.isdir(DB_DIR):
+    SESSION_DB_PATH = os.path.join(DB_DIR, "sessions.sqlite")
+else:
+    SESSION_DB_PATH = os.path.join("/tmp", "sessions.sqlite")
 CHAT_HISTORY_LIMIT = 12  # max messages sent to the LLM as context
 
 # --- FastAPI Web Chat ---
