@@ -83,7 +83,9 @@ GATEWAY_MODEL = os.environ.get("GATEWAY_MODEL", "gpt-4o-mini")
 UNOROUTER_API_KEY = os.environ.get("UNOROUTER_API_KEY", "")
 # base URL ที่ถูกต้องคือ api.unorouter.com — unorouter.com/v1 (เว็บหลัก) จะ 404
 UNOROUTER_BASE_URL = os.environ.get("UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
-UNOROUTER_MODEL = os.environ.get("UNOROUTER_MODEL", "gpt-4o-mini")
+# gpt-4o-mini ไม่มีบน UnoRouter — โมเดลฟรีที่เสถียร: k2-horizon:free (100% success,
+# 208ms) หรือ space-bunny-alpha:free (99.8%, 1M ctx) — ดู https://unorouter.com/en/models
+UNOROUTER_MODEL = os.environ.get("UNOROUTER_MODEL", "k2-horizon:free")
 
 # --- Failover chain: ถ้า LLM หลักล้ม (quota หมด/ล่ม) ส่งต่อ prompt+context เดิม
 # ให้ตัวถัดไปทันที — default: unorouter → groq → mistral → ollama (ตามที่มี key)
