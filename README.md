@@ -50,13 +50,16 @@ StateGraph 4 ขั้นตอน:
 ตั้ง `LLM_PROVIDER` เป็น provider หลัก แล้วกำหนด `LLM_FAILOVER_CHAIN` — **ถ้าตัวหลัก quota หมด/ล่ม จะส่งต่อ prompt+context เดิมให้ตัวถัดไปทันที** (provider ที่ไม่มี key ถูกข้ามอัตโนมัติ):
 
 ```
-LLM_FAILOVER_CHAIN=openrouter,unorouter,groq,mistral,ollama
+LLM_FAILOVER_CHAIN=groq,unorouter,mistral,ollama
 ```
+
+Provider ที่ตอบ deterministic error (invalid key / model ไม่มี / 404) ถูกข้ามทันทีไม่ retry, ส่วน error ชั่วคราว (rate limit / timeout) จะ retry 1 ครั้งด้วย backoff ก่อน failover
 
 | Provider | env | หมายเหตุ |
 |---|---|---|
-| **OpenRouter** (แนะนำ) | `LLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | มีโมเดล `:free`, ตัวใหญ่น่าเชื่อถือ |
-| **UNOROUTER** | `LLM_PROVIDER=unorouter` + `UNOROUTER_API_KEY` | OpenAI-compatible ฟรี |
+| **Groq** (แนะนำ primary) | `LLM_PROVIDER=groq` + `GROQ_API` | เร็วมาก ~500 tok/s, `GROQ_MODEL=openai/gpt-oss-120b` (llama-3.3-70b ปิด free tier แล้ว) |
+| **OpenRouter** | `LLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | มีโมเดล `:free`, ตัวใหญ่น่าเชื่อถือ |
+| **UNOROUTER** | `LLM_PROVIDER=unorouter` + `UNOROUTER_API_KEY` | OpenAI-compatible ฟรี, ต้องใช้ `https://api.unorouter.com/v1` + model `k2-horizon:free` |
 | **Gateway ทั่วไป** | `LLM_PROVIDER=gateway` + `GATEWAY_BASE_URL/_API_KEY/_MODEL` | ใช้ได้ทุกเจ้ามาตรฐาน OpenAI (9router ฯลฯ) |
 | **Groq / Mistral / Cloudflare** | `GROQ_API` / `MISTRAL_API` / `CLOUDFLARE_API` | free tier |
 | **OpenAI / Anthropic / Google** | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` | Gemini ฟรีต้องผูก billing (ปิดไว้ก่อนใน config) |
@@ -70,6 +73,8 @@ LLM_FAILOVER_CHAIN=openrouter,unorouter,groq,mistral,ollama
 | **`pinecone`** | cloud vector DB (index `thai-law`, namespace `core_law`/`recent_law`) — **ไม่ต้องโหลดอะไรเลยตอน startup → ไม่มี cold start download** | Cloud Run / production |
 
 Migration chroma → Pinecone: `python scripts/migrate_chroma_to_pinecone.py` (มี `--dry-run`, dimension 384, metric cosine)
+
+⚠️ **Pinecone Starter (free) มีโควตารายเดือน:** Write Units 2M/เดือน · Read Units 1M/เดือน (reset ทุกวันที่ 1) — migration ครั้งเดียวใช้ ~1.5M WU ควรรันต้นเดือน และ upsert ซ้ำด้วย ID เดิม = idempotent ทับข้อมูลเก่าได้เลย (ไม่ต้องลบ index ก่อน — ลบข้อมูลไม่ได้คืนโควตา WU ที่ใช้ไปแล้ว) เช็คเหลือเท่าไรที่ Pinecone Console → Usage
 
 ### 5. Data Ingestion (การนำเข้าข้อมูล)
 *   **Thai Law Section Splitter (`src/thai_law_splitter.py`):** จับหัวมาตราครบทุกรูปแบบ (`มาตรา 5`, `มาตราที่ 7/1`, `มาตรา ๓๙` เลขไทย, `ข้อที่ 5`, ทวิ/ตรี/จัตวา) ไม่ตัดกลางคำ — chunk ต่อเนื่องมี header "ส่วนของ: มาตรา X (ส่วนที่ n/m)" ตรวจด้วย `python src/test_section_splitter.py`
@@ -92,6 +97,7 @@ python src/crawl_ratchakitcha.py --weekly   # รันต่อเนื่อ�
 
 ### 8. Generation & Evaluation
 *   **Chain-of-Thought + Strict Polarity:** ยก quote ก่อนแล้ว "สรุป:" ฟันธงชัดเจน
+*   **Expert Legal Prompt:** ตอบเชิงนักกฎหมาย — ระบุ "มาตรา + ว่าด้วยเรื่องอะไร + เพราะอะไร" (เชื่อมข้อเท็จจริงกับทุกประการขององค์ประกอบความผิด/สิทธิ) และ **ห้ามมั่วเลขมาตรา** — อ้างเฉพาะมาตราที่อยู่ใน Context เท่านั้น ถ้าข้อมูลไม่พอให้บอกตรงๆ ว่า "ข้อมูลไม่เพียงพอ" พร้อมแนะนำกฎหมายที่น่าจะเกี่ยว
 *   **LLM-as-a-Judge:** `src/evaluate.py` วัด accuracy เทียบ dataset (WangchanX-Legal-ThaiCCL-RAG)
 
 ---

@@ -24,10 +24,11 @@ RAG (Retrieval-Augmented Generation) เฉพาะทางกฎหมาย�
 | จุดเด่น | รายละเอียด |
 |---|---|
 | **LangGraph Agent** | StateGraph 4 ขั้น: intent routing → query rewrite (multi-turn) → hybrid retrieval + grading → generation |
-| **Hybrid Retrieval RRF** | Vector (semantic) + BM25 (ตัดคำไทยด้วย PyThaiNLP) รวมคะแนนด้วย Reciprocal Rank Fusion |
-| **Multi-LLM Failover** | ต่อ LLM หลายเจ้าเรียงเป็น chain — ตัวหลัก quota หมด/ล่ม ส่งต่อ prompt+context ให้ตัวถัดไปทันที ไม่มี downtime ไม่แก้โค้ด |
+| **Hybrid Retrieval RRF** | Vector (semantic) + BM25 (ตัดคำไทยด้วย PyThaiNLP) รวมคะแนนด้วย **Weighted RRF** (vector 0.7 / keyword 0.3 ปรับได้ผ่าน env) — กัน keyword trap |
+| **Multi-LLM Failover** | ต่อ LLM หลายเจ้าเรียงเป็น chain (Groq → UNOROUTER → Mistral → Ollama) — ตัวหลัก quota หมด/ล่ม ส่งต่อ prompt+context ให้ตัวถัดไปทันที ไม่มี downtime ไม่แก้โค้ด |
 | **Dual Vector Store** | ChromaDB (local, คุ้ม cost) ↔ Pinecone (cloud, ไม่มี cold start) — สลับด้วย env var เดียว |
-| **Thai Law Splitter** | ตัด chunk ตามมาตรา/ข้อ ครบทุกรูปแบบ (เลขไทย, มาตราที่ 7/1, ทวิ/ตรี/จัตวา) ไม่ตัดกลางคำ — แก้ truncation หัวมาตรา |
+| **Thai Law Splitter** | ตัด chunk ตามมาตรา/ข้อ ครบทุกรูปแบบ (เลขไทยรวม ๐, มาตราที่ 7/1, ทวิ/ตรี/จัตวา) ไม่ตัดกลางคำ — พร้อม regression test ป้องกัน bug หัวมาตราเพี้ยน (เช่น ม.๑๕๐๗ ถูกแท็กเป็น ม.๑๕) |
+| **Expert Legal Prompt** | ตอบเชิงนักกฎหมาย: ระบุ "มาตรา + ว่าด้วยเรื่องอะไร + เพราะอะไร" เชื่อมข้อเท็จจริงกับองค์ประกอบทางกฎหมาย — ห้ามมั่วเลขมาตรา อ้างเฉพาะที่อยู่ใน Context |
 | **Multi-channel** | Web, LINE (ตอบ 200 ทันที + background processing ตัด LINE timeout), Discord, OpenClaw, CLI — agent ตัวเดียวทุกช่องทาง |
 | **User Data on GCP** | Firestore เก็บประวัติแชท · BigQuery เก็บ analytics คำถาม — fail-safe ทั้งคู่ |
 | **Customizable UI** | เลือกมาสคอต/ฟอนต์ไทย 6 แบบ/ธีมมืด-สว่าง/layout — จำค่าใน localStorage |
@@ -75,7 +76,7 @@ RAG (Retrieval-Augmented Generation) เฉพาะทางกฎหมาย�
                         │
           Pinecone (cloud) หรือ ChromaDB (local)
                         ▼
-        LLM Failover Chain → OpenRouter → UNOROUTER → Groq → ...
+        LLM Failover Chain → Groq → UNOROUTER → Mistral → ...
                         ▼
           คำตอบ + อ้างอิงมาตรา + ลิงก์เอกสารต้นทาง
 

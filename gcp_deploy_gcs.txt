@@ -109,6 +109,17 @@
 #    → container จะข้ามการ rsync chroma_db จาก GCS ทันที startup ไวขึ้น
 #    → ไม่ต้องให้ SA มีสิทธิ์อ่าน bucket, ไม่ต้องพึ่ง gcloud CLI ใน image
 # 3) หมายเหตุ: BM25 hybrid search ยังทำงานเหมือนเดิม (rerank ใน memory)
+# 4) **Re-ingest + re-migrate หลังแก้ bug section_id (สำคัญ!)**
+#    - ข้อมูลใน Pinecone ปัจจุบันถูก ingest ด้วย regex เก่าที่มี 2 bug:
+#      (ก) [ก-ฮ] อยู่ในคลาสตัวเลข → กลืนคำไทยต่อท้าย 'ข้อ' → metadata เพี้ยน เช่น 'ข้อสงส' (จาก 'ข้อสงสัย'), 'ข้อคว' (จาก 'ข้อควรระวัง')
+#      (ข) [๑-๙] ไม่รวมเลข ๐ → 'มาตรา ๑๕๐๗' ถูกติดแท็กผิดเป็น 'มาตรา ๑๕'
+#    - โค้ด splitter ใหม่ (thai_law_splitter.py) ถูกต้องแล้ว + มี regression test ใน test_section_splitter.py
+#    - ทำตามลำดับ:
+#        python src/ingest_core.py && python src/ingest_recent.py   # สร้าง chroma_db ใหม่ (ลบ chroma_db เก่าก่อน หรือ upsert ทับด้วย ID เดิม)
+#        export PINECONE_KEY=pcsk_...
+#        python scripts/migrate_chroma_to_pinecone.py --reset-state  # อัปทับ Pinecone (ID เดิม → idempotent) ใช้โควต้า WU ~1.5M
+#      ⚠️ Starter plan = 2M WU/เดือน → ถ้าเดือนนี้ใช้ไปแล้ว ให้เลื่อนไปรันต้นเดือนถัดไป หรืออัปเป็น Builder
+#    - ตรวจหลัง migrate: ค้น Pinecone หา 'มาตรา ๑๕๐๗' ต้องเห็น metadata section_id = 'มาตรา ๑๕๐๗' ไม่ใช่ 'มาตรา ๑๕'
 #
 # --- Firestore (rag-law-db) ---
 # - ประวัติแชททุกเทิร์นเก็บที่ collection "chat_sessions" → doc <session_id> → subcollection "turns"

@@ -95,6 +95,46 @@ def test_old_approach_problems():
     return True
 
 
+def test_regression_thai_zero_and_word_greediness():
+    print()
+    print("=" * 60)
+    print("C0) Regression: bug จาก regex เก่าที่ใช้ ingest ครั้งแรก (ข้อมูลจริงใน chroma_db)")
+    print("=" * 60)
+    from thai_law_splitter import SECTION_SPLIT_PATTERN
+
+    # Bug 1: คลาส [ก-ฮ] ของ regex เก่ากลืนคำไทยต่อท้าย 'ข้อ' → 'ข้อสงสัย' กลายเป็น header 'ข้อสงส'
+    # Bug 2: คลาส [๑-๙] ไม่รวมเลข ๐ (U+0E50 อยู่นอกช่วง) → 'มาตรา ๑๕๐๗' ถูกจับเป็น 'มาตรา ๑๕'
+    cases = {
+        # (ข้อความ, header ที่ regex ใหม่ต้องได้ หรือ None ถ้าต้องไม่จับ)
+        "ในกรณีที่มีข้อสงสัย ให้ตัดสินตามความยุติธรรม": None,
+        "ต้องศึกษาข้อควรระวังก่อนลงนาม": None,
+        "เกิดข้อพิพาทแก่คู่กรณี": None,
+        "มาตรา ๑๕๐๗ ถ้าคู่สมรสได้ทำการสมรสโดยถูกข่มขู่": "มาตรา ๑๕๐๗",
+        "มาตรา ๑๐๐๐ ให้ใช้บังคับ": "มาตรา ๑๐๐๐",
+        "มาตรา 15/1 ว่าด้วยสัญญา": "มาตรา 15/1",
+    }
+    fails = 0
+    for text, expected in cases.items():
+        m = SECTION_SPLIT_PATTERN.search(text)
+        got = m.group(1) if m else None
+        ok = got == expected
+        status = "OK " if ok else "FAIL"
+        print(f"  [{status}] {text[:45]!r:50} -> {got!r}")
+        if not ok:
+            fails += 1
+    assert fails == 0, f"regex ใหม่ต้องผ่านทุก regression case (พลาด {fails} case)"
+
+    # split_law_sections ต้องไม่แตกข้อความที่มีคำ 'ข้อ...' ทั่วไปเป็นหลาย section
+    from thai_law_splitter import split_law_sections
+    text = "มาตรา ๑๕๐๗ ถ้ามีข้อสงสัยให้ตัดสินตามความยุติธรรม และพิจารณาข้อควรระวังของคู่สมรส"
+    sections = split_law_sections(text)
+    assert len(sections) == 1, f"ต้อง split ได้ 1 section แต่ได้ {len(sections)}: {sections}"
+    assert sections[0][0] == "มาตรา ๑๕๐๗", f"header ต้องเป็น 'มาตรา ๑๕๐๗' ไม่ใช่ {sections[0][0]!r}"
+    # เนื้อหาต้องครบ ไม่หลุดกลางคำ
+    assert "ข้อสงสัย" in sections[0][1] and "ข้อควรระวัง" in sections[0][1], "เนื้อหาถูกตัดกลางคำ"
+    print("  [PASS] regression ผ่านทั้งหมด")
+
+
 def test_new_splitter():
     print()
     print("=" * 60)
@@ -138,6 +178,7 @@ def test_new_splitter():
 
 
 if __name__ == "__main__":
+    test_regression_thai_zero_and_word_greediness()
     test_old_approach_problems()
     test_new_splitter()
     print("\n" + "=" * 60)
