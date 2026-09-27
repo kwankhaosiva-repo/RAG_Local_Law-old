@@ -94,6 +94,15 @@ LLM_FAILOVER_CHAIN = os.environ.get(
     "LLM_FAILOVER_CHAIN", "unorouter,groq,mistral,ollama"
 )
 
+# --- Output token limit + retry ต่อ provider ---
+# จำกัด output ให้เท่ากันทุกโมเดล (กันโมเดลไหนตัดคำกลางคำหรือตอบยาวเกิน)
+# 2048 tokens ≈ คำตอบกฎหมายไทย+อ้างมาตรา ได้สบาย — ปรับได้ผ่าน env
+LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
+# retry ต่อ provider เมื่อ error แบบชั่วคราว (429 rate limit / timeout / 5xx)
+# — error แบบ deterministic (404 model ไม่มี / 401 key ผิด) ข้ามไปตัวถัดไปทันที
+# backoff: หน่วง 2^attempt วินาที (1s, 2s, ...) เหมือนแพทเทิร์น SM_Stock_AIAgent
+LLM_MAX_RETRIES_PER_PROVIDER = int(os.environ.get("LLM_MAX_RETRIES_PER_PROVIDER", "1"))
+
 EMBEDDING_MODEL_NAME = os.environ.get(
     "EMBEDDING_MODEL_NAME",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

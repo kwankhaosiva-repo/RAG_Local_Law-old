@@ -59,6 +59,10 @@
 #   MISTRAL_API=...
 #   LLM_FAILOVER_CHAIN=unorouter,groq,mistral
 #
+# output limit + retry (default ในโค้ดแล้ว แก้ผ่าน env ได้):
+#   LLM_MAX_TOKENS=2048              # คำตอบยาวเท่ากันทุกโมเดล
+#   LLM_MAX_RETRIES_PER_PROVIDER=1   # retry 429/timeout ด้วย backoff 1s,2s,.. ส่วน 404/401 ข้ามทันที
+#
 # secret "env_law" เก็บ env ทั้งหมดเป็นก้อนเดียว (รูปแบบ .env) เช่น:
 #   OPENAI_API_KEY=sk-...
 #   LINE_CHANNEL_ACCESS_TOKEN=...

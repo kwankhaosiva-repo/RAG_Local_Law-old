@@ -2,13 +2,20 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable
 import os
+import time
 
 import config
+import config as _config_mod  # ใช้ใน invoke (พารามิเตอร์ config ทับชื่อ module)
 
 
 def _make_provider_llm(provider: str):
-    """คืน LLM ของ provider ตัวเดียว (ollama/openai/.../gateway)"""
+    """คืน LLM ของ provider ตัวเดียว (ollama/openai/.../gateway)
+
+    ทุก provider กำหนด max_tokens เท่ากัน (config.LLM_MAX_TOKENS) เพื่อให้
+    คำตอบยาวเท่ากันไม่ง้อโมเดล — กัน token limit error ของโมเดลที่ default ต่ำ
+    """
     provider = (provider or "ollama").lower()
+    _mt = config.LLM_MAX_TOKENS
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -17,6 +24,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,  # Zero temp for explicit strictness
             base_url=config.OLLAMA_HOST,
             keep_alive="5m",
+            num_predict=_mt,
         )
 
     if provider == "openai":
@@ -25,6 +33,7 @@ def _make_provider_llm(provider: str):
             model=config.OPENAI_MODEL,
             temperature=0.0,
             api_key=config.OPENAI_API_KEY,
+            max_tokens=_mt,
         )
 
     if provider == "anthropic":
@@ -33,6 +42,7 @@ def _make_provider_llm(provider: str):
             model=config.ANTHROPIC_MODEL,
             temperature=0.0,
             api_key=config.ANTHROPIC_API_KEY,
+            max_tokens=_mt,
         )
 
     if provider == "google":
@@ -41,6 +51,7 @@ def _make_provider_llm(provider: str):
             model=config.GOOGLE_MODEL,
             temperature=0.0,
             google_api_key=config.GOOGLE_API_KEY,
+            max_output_tokens=_mt,
         )
 
     if provider == "openrouter":
@@ -50,6 +61,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,
             api_key=config.OPENROUTER_API_KEY,
             base_url=config.OPENROUTER_BASE_URL,
+            max_tokens=_mt,
         )
 
     if provider == "groq":
@@ -59,6 +71,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,
             api_key=config.GROQ_API_KEY,
             base_url=config.GROQ_BASE_URL,
+            max_tokens=_mt,
         )
 
     if provider == "mistral":
@@ -68,6 +81,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,
             api_key=config.MISTRAL_API_KEY,
             base_url=config.MISTRAL_BASE_URL,
+            max_tokens=_mt,
         )
 
     if provider == "cloudflare":
@@ -77,6 +91,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,
             api_key=config.CLOUDFLARE_API_KEY,
             base_url=config.CLOUDFLARE_BASE_URL,
+            max_tokens=_mt,
         )
 
     # --- UNOROUTER (unorouter.com — free OpenAI-compatible) ---
@@ -89,6 +104,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,
             api_key=config.UNOROUTER_API_KEY or "not-needed",
             base_url=config.UNOROUTER_BASE_URL,
+            max_tokens=_mt,
         )
 
     # --- Generic OpenAI-compatible gateway (9router.com ฯลฯ) ---
@@ -102,6 +118,7 @@ def _make_provider_llm(provider: str):
             temperature=0.0,
             api_key=config.GATEWAY_API_KEY or "not-needed",  # บางเจ้า local/free ไม่ต้องมี key
             base_url=config.GATEWAY_BASE_URL,
+            max_tokens=_mt,
         )
 
     raise ValueError(
@@ -132,8 +149,25 @@ def _provider_ready(provider: str) -> bool:
     return bool(getattr(config, key_name, "") or os.environ.get(key_name))
 
 
+# error ที่ retry ไม่ช่วย (model ไม่มี / key ผิด / ห้ามเข้า) — ข้ามไป provider ถัดไปทันที
+_DETERMINISTIC_ERRORS = (
+    "model_not_found", "is not offered here", "does not exist",
+    "invalid_api_key", "incorrect api key", "unauthorized", "authentication",
+    "HTTP 404", "status code: 404", "401", "403",
+)
+
+
+def _is_deterministic(err: Exception) -> bool:
+    msg = str(err).lower()
+    return any(k.lower() in msg for k in _DETERMINISTIC_ERRORS)
+
+
 class FallbackLLM(Runnable):
     """ห่อ LLM หลายตัวเรียงตามลำดับ — ตัวไหน error/quota หมด ข้ามไปตัวถัดไปทันที
+
+    - error ชั่วคราว (429 rate limit / timeout / 5xx): retry ใน provider เดิม
+      ด้วย exponential backoff (1s, 2s, ...) ก่อนย้ายตัว — เหมือนแพทเทิร์น SM_Stock_AIAgent
+    - error deterministic (404 model ไม่มี / 401 key ผิด): ข้ามทันที ไม่เสียเวลา retry
 
     Inherit จาก langchain Runnable แท้จริง เพื่อให้ใช้ใน chain แบบ
     `prompt | llm | parser` ได้ปกติ — เดิมเป็น plain class ทำให้ LangChain
@@ -147,14 +181,22 @@ class FallbackLLM(Runnable):
     def invoke(self, input_data, config=None, **kwargs):
         last_err: Exception | None = None
         for llm in self._llms:
-            try:
-                return llm.invoke(input_data, config=config, **kwargs)
-            except Exception as e:
-                last_err = e
-                print(
-                    f"[llm_client] {llm.__class__.__name__} failed, "
-                    f"trying next in failover chain: {type(e).__name__}: {e}"
-                )
+            max_retries = getattr(_config_mod, "LLM_MAX_RETRIES_PER_PROVIDER", 1)
+            for attempt in range(max_retries + 1):
+                try:
+                    return llm.invoke(input_data, config=config, **kwargs)
+                except Exception as e:
+                    last_err = e
+                    kind = "deterministic — skipping provider" if _is_deterministic(e) else "transient"
+                    print(
+                        f"[llm_client] {llm.__class__.__name__} failed "
+                        f"(attempt {attempt + 1}/{max_retries + 1}, {kind}), "
+                        f"error: {type(e).__name__}: {e}"
+                    )
+                    if _is_deterministic(e):
+                        break  # ข้ามไป provider ถัดไปทันที
+                    if attempt < max_retries:
+                        time.sleep(2 ** attempt)  # backoff 1s, 2s, ...
         raise last_err  # ทุกตัวล้มเหลว
 
     def bind(self, **kwargs):
