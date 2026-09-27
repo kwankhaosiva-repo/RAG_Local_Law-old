@@ -68,9 +68,17 @@ CLOUDFLARE_BASE_URL = os.environ.get(
 CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST") or os.environ.get("OLLAMA_API", "http://localhost:11434")
 # ถ้าไม่มี cloud provider ใด ๆ ใช้ได้ (ไม่มี key) → ค่อย fallback ไป ollama ตอนสร้าง chain
-# (LLM_PROVIDER ต้องเป็น cloud อย่าง unorouter/openrouter ไม่งั้นต้องรอ connect localhost:11434 ก่อนทุกครั้ง)
-_DEFAULT_PROVIDER = "unorouter" if os.environ.get("UNOROUTER_API_KEY") else "ollama"
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", _DEFAULT_PROVIDER)
+# ลำดับความชอบ: groq (gpt-oss-120b ไทยแข็งแรง + เร็ว 500 tok/s) > unorouter (โมเดลฟรี
+# แต่ส่วนใหญ่เป็นโมเดลเล็กที่ภาษาไทยพัง เช่น k2-horizon ตัดสระ/วรรณยุกต์หาย) > ollama
+# (LLM_PROVIDER ต้องเป็น cloud ไม่งั้นต้องรอ connect localhost:11434 ก่อนทุกครั้ง)
+def _default_provider():
+    if os.environ.get("GROQ_API_KEY") or os.environ.get("GROQ_API"):
+        return "groq"
+    if os.environ.get("UNOROUTER_API_KEY"):
+        return "unorouter"
+    return "ollama"
+
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", _default_provider())
 
 # --- Generic OpenAI-compatible gateway (9router.com ฯลฯ) ---
 # ใช้เมื่อ LLM_PROVIDER=gateway — รองรับทุกเจ้าที่ API เป็นมาตรฐาน OpenAI
@@ -91,7 +99,7 @@ UNOROUTER_MODEL = os.environ.get("UNOROUTER_MODEL", "k2-horizon:free")
 # ให้ตัวถัดไปทันที — default: unorouter → groq → mistral → ollama (ตามที่มี key)
 # (provider ที่ไม่มี key จะถูกข้ามอัตโนมัติ ไม่ต้องแก้ chain เอง)
 LLM_FAILOVER_CHAIN = os.environ.get(
-    "LLM_FAILOVER_CHAIN", "unorouter,groq,mistral,ollama"
+    "LLM_FAILOVER_CHAIN", "groq,unorouter,mistral,ollama"
 )
 
 # --- Output token limit + retry ต่อ provider ---
@@ -124,6 +132,17 @@ PINECONE_NAMESPACE_RECENT = os.environ.get("PINECONE_NAMESPACE_RECENT", "recent_
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 RETRIEVAL_K = 5
+
+# น้ำหนัก RRF ระหว่าง vector (ความเข้าใจความหมาย) กับ BM25 (keyword ตรงเป๊ะ)
+# vector > BM25 เพราะ BM25 ชอบถูกคำกว้างหลอก เช่น ถามเรื่อง "ใช้ครอบครัวเป็นตัวประกัน"
+# แต่ BM25 ดัน พ.ร.บ.ประกันสังคม / จดทะเบียนครอบครัว ขึ้นมาแทน ป.พ.พ. เรื่องบังคับ/ฉ้อโกง
+RETRIEVER_VECTOR_WEIGHT = float(os.environ.get("RETRIEVER_VECTOR_WEIGHT", "0.7"))
+RETRIEVER_BM25_WEIGHT = float(os.environ.get("RETRIEVER_BM25_WEIGHT", "0.3"))
+
+# ตัดขั้นตอน grade เอกสารด้วย LLM (ประหยัด 1 call/คำถาม ~30-50s บนโมเดลช้า)
+# generate prompt มีเงื่อนไข "ข้อมูลไม่เพียงพอ" อยู่แล้ว จึงกัน hallucination แทนได้
+# ตั้ง AGENT_GRADE_DOCS=1 เพื่อเปิดกลับ (เข้มงวดขึ้น แต่ช้าขึ้น 1 call)
+AGENT_GRADE_DOCS = os.environ.get("AGENT_GRADE_DOCS", "0") == "1"
 
 # --- Conversation Agent / Sessions ---
 # บน Cloud Run โฟลเดอร์ /app/chroma_db ไม่มีอยู่และ appuser เขียน /app ไม่ได้

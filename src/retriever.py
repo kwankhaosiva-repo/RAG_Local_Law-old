@@ -149,15 +149,19 @@ class Retriever:
         else:
             bm25_ranks = vector_ranks
 
-        # Calculate RRF Score
+        # Calculate weighted RRF Score — vector น้ำหนักมากกว่า BM25 (config)
+        # เพราะ BM25 จับ keyword ผิวเผิน เช่น "ประกัน" ในบริบท "ใช้ครอบครัวเป็นตัวประกัน"
+        # ไม่ได้หมายถึง พ.ร.บ.ประกันสังคม — semantic search เข้าใจบริบทกว่า
+        vw = config.RETRIEVER_VECTOR_WEIGHT
+        bw = config.RETRIEVER_BM25_WEIGHT
         scores = {}
         for doc in all_vector_docs:
             content = doc.page_content
             vr = vector_ranks.get(content, 1000)
             br = bm25_ranks.get(content, 1000)
             
-            # RRF formula: 1 / (60 + rank) 
-            score = (1.0 / (60 + vr)) + (1.0 / (60 + br))
+            # Weighted RRF: weight / (60 + rank)
+            score = (vw / (60 + vr)) + (bw / (60 + br))
             
             # Soft boost กรณีไม่มี Hard Filtering
             if target_law and (target_law in doc.metadata.get('title', '') or doc.metadata.get('title', '') in target_law):

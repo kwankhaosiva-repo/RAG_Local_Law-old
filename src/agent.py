@@ -161,6 +161,10 @@ class LegalAgent:
 
     def _route_intent(self, state):
         question = state["messages"][-1].content
+        # เทิร์นแรกของ session → legal ทันที (ประหยัด 1 LLM call ~30-50s บนโมเดลช้า)
+        # ผู้ใช้เปิดแชทด้วยคำถามกฎหมายเป็นส่วนใหญ่; small talk หลังเทิร์นแรกยังจับได้ปกติ
+        if len(state.get("messages") or []) <= 1:
+            return {"intent": "legal"}
         try:
             intent_raw = self._get_intent_chain().invoke({
                 "conversation": self._conversation_text(state),
@@ -210,6 +214,10 @@ class LegalAgent:
         doc_text = "\n\n".join(
             f"[{i+1}] {d.page_content[:500]}" for i, d in enumerate(docs[:5])
         )
+        if not config.AGENT_GRADE_DOCS:
+            # ข้าม LLM grader — มี docs → ปล่อยผ่านไป generate ทันที (ประหยัด 1 LLM call)
+            # กัน hallucination ด้วยเงื่อนไข "ข้อมูลไม่เพียงพอ" ใน generate prompt แทน
+            return {"enough_context": True}
         try:
             verdict = self._get_grade_chain().invoke({
                 "question": question,
