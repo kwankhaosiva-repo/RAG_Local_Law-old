@@ -337,6 +337,28 @@
   }
   #resetSettings:hover { border-color: var(--gold); color: var(--text-main); }
 
+  /* ---------- Bot profile (photo + name) ---------- */
+  .prof-row { display: flex; align-items: center; gap: 12px; }
+  .prof-preview {
+    width: 62px; height: 62px; border-radius: 50%; flex-shrink: 0;
+    background: radial-gradient(circle at 30% 30%, #3a5a9f, #1e3a6e);
+    border: 2.5px solid var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; color: var(--text-main);
+  }
+  .prof-preview.has-photo { background-size: cover; background-position: center; color: transparent; }
+  .prof-actions { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .prof-actions .opt { text-align: left; }
+  .prof-name {
+    width: 100%; margin-top: 10px; padding: 9px 12px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    background: var(--bg-chat); color: var(--text-main);
+    font-family: inherit; font-size: .82rem; outline: none;
+  }
+  .prof-name:focus { border-color: var(--gold); }
+  .set-group .hint { font-size: .68rem; color: var(--text-sub); margin-top: 7px; line-height: 1.5; }
+  .logo.has-photo, .avatar.has-photo { background-size: cover; background-position: center; color: transparent; }
+
   /* ---------- Document layout mode ---------- */
   [data-layout="doc"] .bubble-col { max-width: 100%; }
   [data-layout="doc"] .msg, [data-layout="doc"] .msg.user { justify-content: stretch; }
@@ -368,12 +390,12 @@
       <div class="logo" id="headerMascot">🦉</div>
       <div>
         <h1 id="botName">ที่ปรึกษากฎหมายไทย</h1>
-        <div class="status"><span class="dot"></span><span id="statusText">พร้อมช่วยเหลือ · ตอบจากฐานกฎหมายจริง</span></div>
+        <div class="status"><span class="dot"></span><span id="statusText" data-i18n="status">พร้อมช่วยเหลือ · ตอบจากฐานกฎหมายจริง</span></div>
       </div>
     </div>
     <div class="header-actions">
-      <button class="icon-btn" id="settingsBtn" title="ตั้งค่าหน้าตา">⚙️</button>
-      <button class="icon-btn" id="resetBtn" title="เริ่มบทสนทนาใหม่">↺</button>
+      <button class="icon-btn" id="settingsBtn" title="ตั้งค่าหน้าตา" data-i18n-title="settingsBtnTitle">⚙️</button>
+      <button class="icon-btn" id="resetBtn" title="เริ่มบทสนทนาใหม่" data-i18n-title="resetBtnTitle">↺</button>
     </div>
   </header>
 
@@ -381,45 +403,65 @@
     <div class="msg bot">
       <div class="avatar" data-avatar="bot">🦉</div>
       <div class="bubble-col">
-        <div class="bubble" id="greetBubble">สวัสดีครับ 🙏 ผมคือที่ปรึกษากฎหมายประจำตัวคุณ
+        <div class="bubble" id="greetBubble" data-i18n="greet">สวัสดีครับ 🙏 ผมคือที่ปรึกษากฎหมายประจำตัวคุณ
 ถามเรื่องสิทธิ หน้าที่ เงื่อนไขกฎหมาย หรือระบุชื่อกฎหมาย+มาตรา ได้เลยครับ
 ทุกคำตอบจะระบุแหล่งอ้างอิงจากราชกิจจานุเบกษาให้ทุกครั้ง 📎</div>
         <div class="meta"><span id="greetTime"></span></div>
       </div>
     </div>
     <div class="chips" id="chips">
-      <button class="chip" type="button">การเลิกจ้างพนักงาน ต้องจ่ายค่าชดเชยเท่าไร?</button>
-      <button class="chip" type="button">หนี้ตกระบบ มีอายุความกี่ปี?</button>
-      <button class="chip" type="button">ทำสัญญาเช่าบ้าน ต้องมีใบมอบอำนาจไหม?</button>
+      <button class="chip" type="button" data-i18n="chip1">การเลิกจ้างพนักงาน ต้องจ่ายค่าชดเชยเท่าไร?</button>
+      <button class="chip" type="button" data-i18n="chip2">หนี้ตกระบบ มีอายุความกี่ปี?</button>
+      <button class="chip" type="button" data-i18n="chip3">ทำสัญญาเช่าบ้าน ต้องมีใบมอบอำนาจไหม?</button>
     </div>
   </div>
 
   <form id="chatForm">
     <div class="input-wrap">
-      <textarea id="msgInput" rows="1" autocomplete="off" placeholder="พิมพ์คำถามกฎหมายของคุณ…"></textarea>
+      <textarea id="msgInput" rows="1" autocomplete="off" placeholder="พิมพ์คำถามกฎหมายของคุณ…" data-i18n-ph="inputPlaceholder"></textarea>
     </div>
     <button type="submit" id="sendBtn">➤</button>
   </form>
-  <footer class="note">คำตอบเพื่อการอ้างอิงเบื้องต้น ไม่ใช่คำแนะนำทางกฎหมายอย่างเป็นทางการ</footer>
+  <footer class="note" data-i18n="footer">คำตอบเพื่อการอ้างอิงเบื้องต้น ไม่ใช่คำแนะนำทางกฎหมายอย่างเป็นทางการ</footer>
 
   <!-- Settings drawer -->
   <div id="scrim"></div>
   <aside id="settingsDrawer" aria-label="ตั้งค่าหน้าตา">
     <div class="drawer-head">
-      <h2>⚙️ ปรับแต่งผู้ช่วย</h2>
+      <h2 data-i18n="settingsTitle">⚙️ ปรับแต่งผู้ช่วย</h2>
       <button class="icon-btn" id="closeSettings" style="background:transparent;border:none;">✕</button>
     </div>
     <div class="drawer-body">
       <div class="set-group">
-        <label>ตัวละครผู้ช่วย</label>
-        <div class="opt-row" data-setting="mascot">
-          <button class="opt active" data-value="owl"><span class="ico">🦉</span>นกฮูก</button>
-          <button class="opt" data-value="robot"><span class="ico">🤖</span>หุ่นยนต์</button>
-          <button class="opt" data-value="elephant"><span class="ico">🐘</span>ช้างไทย</button>
+        <label data-i18n="groupLang">ภาษา</label>
+        <div class="opt-row" data-setting="lang">
+          <button class="opt active" data-value="th">🇹🇭 ไทย</button>
+          <button class="opt" data-value="en">🇬🇧 English</button>
         </div>
       </div>
       <div class="set-group">
-        <label>ฟอนต์</label>
+        <label data-i18n="groupProfile">โปรไฟล์ผู้ช่วย</label>
+        <div class="prof-row">
+          <div class="prof-preview" id="profPreview">🦉</div>
+          <div class="prof-actions">
+            <input type="file" id="avatarInput" accept="image/*" hidden>
+            <button class="opt" id="pickAvatar" type="button" data-i18n="pickPhoto">📷 เลือกรูปของฉัน</button>
+            <button class="opt" id="clearAvatar" type="button" data-i18n="clearPhoto">↺ ใช้ตัวละครแทนรูป</button>
+          </div>
+        </div>
+        <input class="prof-name" id="botNameInput" type="text" maxlength="40" placeholder="ชื่อผู้ช่วย" data-i18n-ph="botNamePlaceholder" autocomplete="off">
+        <div class="hint" data-i18n-html="profileHint">รูปถูกย่อเป็น 256px แล้วเก็บไว้ในเบราว์เซอร์นี้ (ไม่แชร์ให้คนอื่น) — ถ้าต้องการให้ทุกคนเห็นรูปเดียวกัน ให้ผู้ดูแลวางไฟล์ <code>src/web/bot-avatar.jpg</code> บนเซิร์ฟเวอร์</div>
+      </div>
+      <div class="set-group">
+        <label data-i18n="groupMascot">ตัวละครผู้ช่วย</label>
+        <div class="opt-row" data-setting="mascot">
+          <button class="opt active" data-value="owl"><span class="ico">🦉</span><span data-i18n="mascotOwl">นกฮูก</span></button>
+          <button class="opt" data-value="robot"><span class="ico">🤖</span><span data-i18n="mascotRobot">หุ่นยนต์</span></button>
+          <button class="opt" data-value="elephant"><span class="ico">🐘</span><span data-i18n="mascotElephant">ช้างไทย</span></button>
+        </div>
+      </div>
+      <div class="set-group">
+        <label data-i18n="groupFont">ฟอนต์</label>
         <div class="opt-row" data-setting="font">
           <button class="opt active" data-value="sarabun" style="font-family:'Sarabun'">Sarabun</button>
           <button class="opt" data-value="kanit" style="font-family:'Kanit'">Kanit</button>
@@ -430,30 +472,30 @@
         </div>
       </div>
       <div class="set-group">
-        <label>ขนาดตัวอักษร</label>
+        <label data-i18n="groupSize">ขนาดตัวอักษร</label>
         <div class="size-row" data-setting="size">
-          <button class="opt" data-value="s">เล็ก</button>
-          <button class="opt active" data-value="m">ปกติ</button>
-          <button class="opt" data-value="l">ใหญ่</button>
+          <button class="opt" data-value="s" data-i18n="sizeS">เล็ก</button>
+          <button class="opt active" data-value="m" data-i18n="sizeM">ปกติ</button>
+          <button class="opt" data-value="l" data-i18n="sizeL">ใหญ่</button>
         </div>
       </div>
       <div class="set-group">
-        <label>รูปแบบการจัดวาง</label>
+        <label data-i18n="groupLayout">รูปแบบการจัดวาง</label>
         <div class="opt-row" data-setting="layout">
-          <button class="opt active" data-value="chat">💬 แชท</button>
-          <button class="opt" data-value="doc">📄 เอกสาร</button>
+          <button class="opt active" data-value="chat"><span class="ico">💬</span><span data-i18n="layoutChat">แชท</span></button>
+          <button class="opt" data-value="doc"><span class="ico">📄</span><span data-i18n="layoutDoc">เอกสาร</span></button>
         </div>
       </div>
       <div class="set-group">
-        <label>ธีมสี</label>
+        <label data-i18n="groupTheme">ธีมสี</label>
         <div class="opt-row" data-setting="theme">
-          <button class="opt active" data-value="light">☀️ สว่าง</button>
-          <button class="opt" data-value="dark">🌙 มืด</button>
+          <button class="opt active" data-value="light"><span class="ico">☀️</span><span data-i18n="themeLight">สว่าง</span></button>
+          <button class="opt" data-value="dark"><span class="ico">🌙</span><span data-i18n="themeDark">มืด</span></button>
         </div>
       </div>
     </div>
     <div class="drawer-foot">
-      <button id="resetSettings">คืนค่าเริ่มต้นทั้งหมด</button>
+      <button id="resetSettings" data-i18n="resetAll">คืนค่าเริ่มต้นทั้งหมด</button>
     </div>
   </aside>
 </div>
@@ -469,12 +511,148 @@ const app = document.getElementById("app");
 
 const MASCOTS = { owl: "🦉", robot: "🤖", elephant: "🐘" };
 const SIZES = { s: "14px", m: "16px", l: "17.5px" };
-const DEFAULTS = { mascot: "owl", font: "sarabun", size: "m", layout: "chat", theme: "light" };
+const DEFAULTS = { mascot: "owl", font: "sarabun", size: "m", layout: "chat", theme: "light", lang: "th", avatar: "", botName: "" };
+const DEFAULT_AVATAR_URL = "/bot-avatar.jpg"; // รูปโปรไฟล์ตั้งต้นฝั่งเซิร์ฟเวอร์ (ถ้ามีไฟล์ src/web/bot-avatar.jpg)
+const AUTO_BOT_NAMES = ["ที่ปรึกษากฎหมายไทย", "Thai Legal Advisor"]; // ชื่อนี้ = ใช้ชื่ออัตโนมัติตามภาษา
+
+// ---------- i18n (th / en) — สลับได้จาก ⚙️ ตั้งค่า → ภาษา ----------
+const I18N = {
+  th: {
+    brandName: "ที่ปรึกษากฎหมายไทย",
+    pageSuffix: "Thai Legal Advisor",
+    status: "พร้อมช่วยเหลือ · ตอบจากฐานกฎหมายจริง",
+    settingsBtnTitle: "ตั้งค่าหน้าตา",
+    resetBtnTitle: "เริ่มบทสนทนาใหม่",
+    settingsTitle: "⚙️ ปรับแต่งผู้ช่วย",
+    greet: "สวัสดีครับ 🙏 ผมคือที่ปรึกษากฎหมายประจำตัวคุณ\nถามเรื่องสิทธิ หน้าที่ เงื่อนไขกฎหมาย หรือระบุชื่อกฎหมาย+มาตรา ได้เลยครับ\nทุกคำตอบจะระบุแหล่งอ้างอิงจากราชกิจจานุเบกษาให้ทุกครั้ง 📎",
+    chip1: "การเลิกจ้างพนักงาน ต้องจ่ายค่าชดเชยเท่าไร?",
+    chip2: "หนี้ตกระบบ มีอายุความกี่ปี?",
+    chip3: "ทำสัญญาเช่าบ้าน ต้องมีใบมอบอำนาจไหม?",
+    inputPlaceholder: "พิมพ์คำถามกฎหมายของคุณ…",
+    footer: "คำตอบเพื่อการอ้างอิงเบื้องต้น ไม่ใช่คำแนะนำทางกฎหมายอย่างเป็นทางการ",
+    groupLang: "ภาษา",
+    groupProfile: "โปรไฟล์ผู้ช่วย",
+    pickPhoto: "📷 เลือกรูปของฉัน",
+    clearPhoto: "↺ ใช้ตัวละครแทนรูป",
+    botNamePlaceholder: "ชื่อผู้ช่วย (เว้นว่าง = ใช้ชื่อเริ่มต้น)",
+    profileHint: "รูปถูกย่อเป็น 256px แล้วเก็บไว้ในเบราว์เซอร์นี้ (ไม่แชร์ให้คนอื่น) — ถ้าต้องการให้ทุกคนเห็นรูปเดียวกัน ให้ผู้ดูแลวางไฟล์ <code>src/web/bot-avatar.jpg</code> บนเซิร์ฟเวอร์",
+    groupMascot: "ตัวละครผู้ช่วย",
+    mascotOwl: "นกฮูก",
+    mascotRobot: "หุ่นยนต์",
+    mascotElephant: "ช้างไทย",
+    groupFont: "ฟอนต์",
+    groupSize: "ขนาดตัวอักษร",
+    sizeS: "เล็ก",
+    sizeM: "ปกติ",
+    sizeL: "ใหญ่",
+    groupLayout: "รูปแบบการจัดวาง",
+    layoutChat: "แชท",
+    layoutDoc: "เอกสาร",
+    groupTheme: "ธีมสี",
+    themeLight: "สว่าง",
+    themeDark: "มืด",
+    resetAll: "คืนค่าเริ่มต้นทั้งหมด",
+    copy: "📋 คัดลอก",
+    copied: "✓ คัดลอกแล้ว",
+    srcLabel: "📎 อ้างอิง:",
+    srcFallback: "อ้างอิง",
+    titleUnknown: "ไม่ระบุชื่อกฎหมาย",
+    openDoc: "🔗 เปิดเอกสารต้นทาง",
+    flowTitle: "เส้นทางการวิเคราะห์",
+    flowQuestion: "คำถามของคุณ",
+    flowFound: (n) => `กฎหมายที่ค้นพบ (${n} รายการ)`,
+    flowAnswer: "คำตอบที่สรุปให้",
+    flowAnswerBody: (n) => `สรุปจากเอกสารข้างต้น พร้อมเลขอ้างอิง [1]–[${n}] ด้านบน`,
+    errNoAnswer: "ไม่ได้รับคำตอบจากระบบ",
+    errConn: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง 😔",
+    errSave: "บันทึกไม่สำเร็จ — พื้นที่เก็บในเบราว์เซอร์เต็ม ลองใช้รูปเล็กลงครับ",
+    errUpload: "อัปโหลดรูปไม่สำเร็จครับ",
+    errRead: "อ่านไฟล์ไม่สำเร็จ",
+    errImage: "ไฟล์นี้ไม่ใช่รูปภาพ",
+    resetMsg: "เริ่มบทสนทนาใหม่แล้วครับ 🙏 มีคำถามกฎหมายอะไรถามได้เลยครับ",
+  },
+  en: {
+    brandName: "Thai Legal Advisor",
+    pageSuffix: "Thai Law RAG",
+    status: "Ready · Answers from real Thai law sources",
+    settingsBtnTitle: "Appearance settings",
+    resetBtnTitle: "Start a new chat",
+    settingsTitle: "⚙️ Customize assistant",
+    greet: "Hello 🙏 I'm your personal Thai legal assistant.\nAsk about rights, duties or legal conditions — or name a law plus its section number.\nEvery answer cites sources from the Royal Gazette 📎",
+    chip1: "How much severance pay is due when an employee is laid off?",
+    chip2: "What is the limitation period for a defaulted debt?",
+    chip3: "Does a house rental contract need a power of attorney?",
+    inputPlaceholder: "Type your legal question…",
+    footer: "For preliminary reference only — not formal legal advice.",
+    groupLang: "Language",
+    groupProfile: "Assistant profile",
+    pickPhoto: "📷 Choose my photo",
+    clearPhoto: "↺ Use character instead",
+    botNamePlaceholder: "Assistant name (empty = default name)",
+    profileHint: "Your photo is resized to 256px and kept in this browser only — to make everyone see the same picture, the site owner should place <code>src/web/bot-avatar.jpg</code> on the server.",
+    groupMascot: "Assistant character",
+    mascotOwl: "Owl",
+    mascotRobot: "Robot",
+    mascotElephant: "Thai elephant",
+    groupFont: "Font",
+    groupSize: "Text size",
+    sizeS: "Small",
+    sizeM: "Normal",
+    sizeL: "Large",
+    groupLayout: "Layout",
+    layoutChat: "Chat",
+    layoutDoc: "Document",
+    groupTheme: "Color theme",
+    themeLight: "Light",
+    themeDark: "Dark",
+    resetAll: "Reset all settings",
+    copy: "📋 Copy",
+    copied: "✓ Copied",
+    srcLabel: "📎 Sources:",
+    srcFallback: "Source",
+    titleUnknown: "Unnamed law",
+    openDoc: "🔗 Open source document",
+    flowTitle: "Reasoning path",
+    flowQuestion: "Your question",
+    flowFound: (n) => `Laws retrieved (${n})`,
+    flowAnswer: "Final answer",
+    flowAnswerBody: (n) => `Summarised from the documents above, with citations [1]–[${n}]`,
+    errNoAnswer: "No answer received from the server",
+    errConn: "Could not reach the server. Please try again 😔",
+    errSave: "Could not save — browser storage is full. Try a smaller photo.",
+    errUpload: "Photo upload failed.",
+    errRead: "Could not read the file",
+    errImage: "This file is not an image",
+    resetMsg: "Started a new conversation 🙏 Go ahead and ask your legal question.",
+  },
+};
+
+function t(key, ...args) {
+  const dict = I18N[(settings && settings.lang) || "th"] || I18N.th;
+  const value = Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : I18N.th[key];
+  return typeof value === "function" ? value(...args) : (value ?? key);
+}
+
+function applyI18n() {
+  document.documentElement.lang = settings.lang === "en" ? "en" : "th";
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-title]").forEach(el => { el.title = t(el.dataset.i18nTitle); });
+  const drawerEl = document.getElementById("settingsDrawer");
+  if (drawerEl) drawerEl.setAttribute("aria-label", t("settingsBtnTitle"));
+  const greetTime = document.getElementById("greetTime");
+  if (greetTime) greetTime.textContent = nowHM();
+}
 
 // ---------- settings ----------
 function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem("lawui_settings") || "{}") }; }
-  catch { return { ...DEFAULTS }; }
+  let s;
+  try { s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("lawui_settings") || "{}") }; }
+  catch { s = { ...DEFAULTS }; }
+  // ชื่อบอทที่เท่ากับชื่อเริ่มต้นของภาษาใดก็ตาม = ปล่อยให้เป็นชื่ออัตโนมัติ (ตามภาษาที่เลือก)
+  if (AUTO_BOT_NAMES.includes((s.botName || "").trim())) s.botName = "";
+  return s;
 }
 function applySettings(s) {
   app.dataset.mascot = s.mascot;
@@ -482,15 +660,78 @@ function applySettings(s) {
   app.dataset.layout = s.layout;
   app.dataset.theme = s.theme;
   document.documentElement.style.fontSize = SIZES[s.size] || SIZES.m;
-  document.getElementById("headerMascot").textContent = MASCOTS[s.mascot] || "🦉";
-  document.querySelectorAll("[data-avatar='bot']").forEach(el => el.textContent = MASCOTS[s.mascot] || "🦉");
+  applyI18n();
+  applyProfile(s);
   document.querySelectorAll("[data-setting]").forEach(group => {
     const key = group.dataset.setting;
     group.querySelectorAll(".opt").forEach(b =>
       b.classList.toggle("active", b.dataset.value === s[key]));
   });
 }
-function saveSettings(s) { localStorage.setItem("lawui_settings", JSON.stringify(s)); }
+function saveSettings(s) {
+  try { localStorage.setItem("lawui_settings", JSON.stringify(s)); }
+  catch { alert(t("errSave")); }
+}
+
+// ---------- bot profile (รูป + ชื่อ) ----------
+function paintAvatar(el, photo, mascot, fallback) {
+  if (photo) {
+    el.style.backgroundImage = `url("${photo}")`;
+    el.classList.add("has-photo");
+    el.textContent = "";
+  } else {
+    el.style.backgroundImage = "";
+    el.classList.remove("has-photo");
+    el.textContent = fallback || MASCOTS[mascot] || "🦉";
+  }
+}
+function applyProfile(s) {
+  const photo = s.avatar || "";
+  const mascot = s.mascot || DEFAULTS.mascot;
+  paintAvatar(document.getElementById("headerMascot"), photo, mascot);
+  document.querySelectorAll("[data-avatar='bot']").forEach(el => paintAvatar(el, photo, mascot));
+  const preview = document.getElementById("profPreview");
+  if (preview) paintAvatar(preview, photo, mascot);
+  const nameInput = document.getElementById("botNameInput");
+  if (nameInput && document.activeElement !== nameInput) nameInput.value = s.botName || "";
+  const custom = (s.botName || "").trim();
+  const name = custom || t("brandName");
+  document.getElementById("botName").textContent = name;
+  document.title = custom ? `${custom} — Thai Legal Advisor` : `${t("brandName")} — ${t("pageSuffix")}`;
+  setFavicon(photo);
+}
+function setFavicon(photo) {
+  let link = document.querySelector("link[rel='icon']");
+  if (!photo) { link?.remove(); return; }
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.href = photo;
+}
+
+// ย่อ + ครอปกลางเป็นสี่เหลี่ยมจัตุรัส แล้วเก็บเป็น JPEG (กันพื้นที่ localStorage เต็ม)
+function resizeImage(file, size = 256) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(t("errRead")));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error(t("errImage")));
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 let settings = loadSettings();
 applySettings(settings);
@@ -505,9 +746,47 @@ document.querySelectorAll("[data-setting] .opt").forEach(btn => {
 });
 document.getElementById("resetSettings").addEventListener("click", () => {
   settings = { ...DEFAULTS };
+  document.getElementById("avatarInput").value = "";
   applySettings(settings);
   saveSettings(settings);
 });
+
+// ---------- profile controls ----------
+const avatarInput = document.getElementById("avatarInput");
+document.getElementById("pickAvatar").addEventListener("click", () => avatarInput.click());
+avatarInput.addEventListener("change", async () => {
+  const file = avatarInput.files && avatarInput.files[0];
+  if (!file) return;
+  try {
+    settings.avatar = await resizeImage(file);
+    applySettings(settings);
+    saveSettings(settings);
+  } catch (err) {
+    alert(err.message || t("errUpload"));
+  } finally {
+    avatarInput.value = "";
+  }
+});
+document.getElementById("clearAvatar").addEventListener("click", () => {
+  settings.avatar = "";
+  avatarInput.value = "";
+  applySettings(settings);
+  saveSettings(settings);
+});
+document.getElementById("botNameInput").addEventListener("input", (e) => {
+  settings.botName = e.target.value;
+  applyProfile(settings);
+  saveSettings(settings);
+});
+
+// ถ้าฝั่งเซิร์ฟเวอร์มีรูปตั้งต้น (src/web/bot-avatar.jpg) ให้ใช้เป็นโปรไฟล์ให้ทุกคนเห็น
+if (!settings.avatar) {
+  const probe = new Image();
+  probe.onload = () => {
+    if (!settings.avatar) { settings.avatar = DEFAULT_AVATAR_URL; applySettings(settings); }
+  };
+  probe.src = DEFAULT_AVATAR_URL;
+}
 
 // drawer open/close
 const drawer = document.getElementById("settingsDrawer");
@@ -527,7 +806,7 @@ if (!sessionId) {
 }
 
 function nowHM() {
-  return new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleTimeString(settings.lang === "en" ? "en-GB" : "th-TH", { hour: "2-digit", minute: "2-digit" });
 }
 document.getElementById("greetTime").textContent = nowHM();
 
@@ -563,11 +842,11 @@ function addMsg(role, text, sources) {
     meta.className = "meta";
     const copy = document.createElement("button");
     copy.className = "copy-btn";
-    copy.textContent = "📋 คัดลอก";
+    copy.textContent = t("copy");
     copy.addEventListener("click", () => {
       navigator.clipboard.writeText(text).then(() => {
-        copy.textContent = "✓ คัดลอกแล้ว";
-        setTimeout(() => copy.textContent = "📋 คัดลอก", 1500);
+        copy.textContent = t("copied");
+        setTimeout(() => copy.textContent = t("copy"), 1500);
       });
     });
     meta.append(nowHM(), copy);
@@ -588,23 +867,23 @@ function addMsg(role, text, sources) {
 function addSourceUI(col, bubble, answerText, sources) {
   const strip = document.createElement("div");
   strip.className = "src-strip";
-  strip.innerHTML = '<span class="lbl">📎 อ้างอิง:</span>';
+  strip.innerHTML = `<span class="lbl">${escapeHtml(t("srcLabel"))}</span>`;
   const cards = [];
 
   sources.slice(0, 5).forEach((s, i) => {
     const chip = document.createElement("button");
     chip.className = "src-chip";
     chip.type = "button";
-    chip.textContent = `[${i + 1}] ${s.section || "อ้างอิง"}`;
+    chip.textContent = `[${i + 1}] ${s.section || t("srcFallback")}`;
     strip.appendChild(chip);
 
     const card = document.createElement("div");
     card.className = "src-card";
     card.style.display = "none";
     card.innerHTML =
-      `<b>[${i + 1}]</b> ${escapeHtml(s.title || "ไม่ระบุชื่อกฎหมาย")}` +
+      `<b>[${i + 1}]</b> ${escapeHtml(s.title || t("titleUnknown"))}` +
       (s.section ? ` — ${escapeHtml(s.section)}` : "") +
-      (s.source_url ? `<br><a href="${escapeHtml(s.source_url)}" target="_blank" rel="noopener">🔗 เปิดเอกสารต้นทาง</a>` : "");
+      (s.source_url ? `<br><a href="${escapeHtml(s.source_url)}" target="_blank" rel="noopener">${escapeHtml(t("openDoc"))}</a>` : "");
     col.appendChild(card);
     cards.push(card);
 
@@ -623,23 +902,24 @@ function addSourceUI(col, bubble, answerText, sources) {
   const lawTags = sources.slice(0, 5)
     .map(s => `<span class="law-tag">⚖️ ${escapeHtml((s.title || "").slice(0, 42))}</span>`)
     .join("");
+  const shown = Math.min(sources.length, 5);
   flow.innerHTML = `
-    <summary><span class="chev">▶</span> เส้นทางการวิเคราะห์</summary>
+    <summary><span class="chev">▶</span> ${escapeHtml(t("flowTitle"))}</summary>
     <div class="flow-map">
       <div class="flow-node">
         <span class="dot">1</span>
-        <div class="node-title">คำถามของคุณ</div>
+        <div class="node-title">${escapeHtml(t("flowQuestion"))}</div>
         <div class="node-body">${escapeHtml(answerText.slice(0, 90))}${answerText.length > 90 ? "…" : ""}</div>
       </div>
       <div class="flow-node">
         <span class="dot">2</span>
-        <div class="node-title">กฎหมายที่ค้นพบ (${Math.min(sources.length, 5)} รายการ)</div>
+        <div class="node-title">${escapeHtml(t("flowFound", shown))}</div>
         <div class="node-body">${lawTags}</div>
       </div>
       <div class="flow-node">
         <span class="dot">3</span>
-        <div class="node-title">คำตอบที่สรุปให้</div>
-        <div class="node-body">สรุปจากเอกสารข้างต้น พร้อมเลขอ้างอิง [1]–[${Math.min(sources.length, 5)}] ด้านบน</div>
+        <div class="node-title">${escapeHtml(t("flowAnswer"))}</div>
+        <div class="node-body">${escapeHtml(t("flowAnswerBody", shown))}</div>
       </div>
     </div>`;
   col.appendChild(flow);
@@ -692,10 +972,10 @@ form.addEventListener("submit", async (e) => {
     });
     const data = await res.json();
     removeTyping();
-    addMsg("bot", data.answer || "ไม่ได้รับคำตอบจากระบบ", data.sources);
+    addMsg("bot", data.answer || t("errNoAnswer"), data.sources);
   } catch (err) {
     removeTyping();
-    addMsg("bot", "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง 😔", null);
+    addMsg("bot", t("errConn"), null);
   } finally {
     sendBtn.disabled = false;
     input.focus();
@@ -718,7 +998,7 @@ resetBtn.addEventListener("click", async () => {
   chatBox.innerHTML = "";
   chatBox.appendChild(chips);
   chips.classList.remove("hidden");
-  addMsg("bot", "เริ่มบทสนทนาใหม่แล้วครับ 🙏 มีคำถามกฎหมายอะไรถามได้เลยครับ", null);
+  addMsg("bot", t("resetMsg"), null);
 });
 </script>
 </body>

@@ -12,9 +12,14 @@ Discord Bot Adapter
 
 รัน:
     python src/discord_bot.py
+
+บน Cloud Run (service แยกจากเว็บ เพราะต้องรันตลอดเวลา ไม่ scale to zero):
+    --command python --args src/discord_bot.py --min-instances 1
+    ตั้ง env DISCORD_HEALTH_PORT=8080 ให้มี HTTP port ตอบ health check
 """
 import os
 import sys
+import threading
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -131,10 +136,43 @@ async def law_command(interaction: discord.Interaction, question: str):
         await interaction.channel.send(part)
 
 
+def start_health_server(port: int) -> None:
+    """เปิด HTTP เล็กๆ ตอบ 200 ให้ Cloud Run (Discord ใช้ websocket gateway ไม่มี HTTP port ของตัวเอง)
+    ตั้ง env DISCORD_HEALTH_PORT=8080 เฉพาะตอน deploy เป็น Cloud Run service แยก
+    ตอนรัน local ไม่ต้องตั้ง — บอททำงานได้เลยโดยไม่เปิด port
+    """
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body = b'{"ok": true, "channel": "discord"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
+
+
 def main():
     if not DISCORD_BOT_TOKEN:
         print("[discord_bot] DISCORD_BOT_TOKEN ยังไม่ได้ตั้งค่า — ดูวิธีใน .env_example")
         sys.exit(1)
+
+    health_port = os.environ.get("DISCORD_HEALTH_PORT", "").strip()
+    if health_port:
+        try:
+            threading.Thread(
+                target=start_health_server, args=(int(health_port),), daemon=True
+            ).start()
+            print(f"[discord_bot] health server listening on :{health_port}")
+        except Exception as e:
+            print(f"[discord_bot] health server failed: {e}")
+
     bot.run(DISCORD_BOT_TOKEN)
 
 

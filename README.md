@@ -39,9 +39,9 @@ StateGraph 4 ขั้นตอน:
 
 | ช่องทาง | ไฟล์ | วิธีรัน | หมายเหตุ |
 |---|---|---|---|
-| **Web Chat** | `src/server.py` + `src/web/index.html` | `python src/server.py` | UI ปรับแต่งได้: มาสคอต, ฟอนต์ 6 แบบ, ธีมมืด/สว่าง, layout แชท/เอกสาร, การ์ดอ้างอิงคลิกได้ |
+| **Web Chat** | `src/server.py` + `src/web/index.html` | `python src/server.py` | UI ปรับแต่งได้: **ภาษาไทย/อังกฤษ (สลับป้ายทั้งหน้า)**, **รูปโปรไฟล์บอท/ชื่อบอท**, มาสคอต, ฟอนต์ 6 แบบ, ธีมมืด/สว่าง, layout แชท/เอกสาร, การ์ดอ้างอิงคลิกได้ |
 | **LINE** | `src/line_bot.py` | mount ใน server อัตโนมัติ | ตอบ 200 ทันที + ประมวลผล background (LINE timeout 2 วิ), Reply API ฟรี + Push fallback, ตรวจ `X-Line-Signature` |
-| **Discord** | `src/discord_bot.py` | `python src/discord_bot.py` (แยก process) | `!ask <คำถาม>`, mention, slash `/law` |
+| **Discord** | `src/discord_bot.py` | `python src/discord_bot.py` (แยก process) | `!ask <คำถาม>`, mention, slash `/law` — ไม่ใช้ webhook (gateway websocket); บน Cloud Run รันเป็น service ที่ 2 พร้อม `DISCORD_HEALTH_PORT` |
 | **OpenClaw** | `src/openclaw_bridge.py` | mount ใน server อัตโนมัติ | webhook + secret auth |
 | **CLI** | `src/main.py` | `python src/main.py` | คำสั่ง `reset`, `exit` |
 
@@ -137,16 +137,58 @@ python src/evaluate.py                  # วัด accuracy
 4. **ปิด** auto-reply/greeting ของ Official Account และอย่าเปิด "Use grouped responses"
 5. ทดสอบ: `curl https://<your-domain>/line/health` → `{"ok": true, "configured": true}`
 
+อัปเดต env บน Cloud Run ให้มีผลทันทีโดยไม่ต้อง build image ใหม่:
+
+```bash
+gcloud run services update rag-law --region asia-southeast1 --project rag-law-509304 \
+  --update-env-vars "LINE_CHANNEL_ACCESS_TOKEN=xxx,LINE_CHANNEL_SECRET=yyy"
+```
+
+หมายเหตุ: ถ้า service ใช้ `min-instances=0` การกด Verify ใน LINE Console ครั้งแรกอาจ timeout (cold start) — กดซ้ำอีกครั้งได้
+
 ### ตั้งค่า Discord Bot
 1. สร้าง Application ที่ https://discord.com/developers/applications → Bot → copy token
 2. ใส่ `DISCORD_BOT_TOKEN` ใน `.env` + เปิด **Message Content Intent**
 3. เชิญบอทด้วย OAuth2 URL (scopes: `bot` + `applications.commands`)
 4. รัน `python src/discord_bot.py` — ใช้ได้ทั้ง `!ask`, mention, และ slash `/law`
+5. (ทางเลือก) รันบน Cloud Run เป็น service ที่ 2 — บอทต้องออนไลน์ตลอด จึงต้อง `--min-instances 1 --no-cpu-throttling`:
+
+```bash
+gcloud run deploy rag-law-discord --source . --region asia-southeast1 --project rag-law-509304 \
+  --command python --args src/discord_bot.py \
+  --min-instances 1 --max-instances 1 --no-cpu-throttling \
+  --memory 2Gi --cpu 1 --port 8080 \
+  --set-env-vars "DISCORD_HEALTH_PORT=8080,VECTOR_STORE=pinecone,LLM_PROVIDER=groq" \
+  --set-secrets "ENV_LAW=env_law:latest" --allow-unauthenticated
+```
+
+`DISCORD_HEALTH_PORT` ทำให้บอทเปิด HTTP port ตอบ 200 ให้ Cloud Run (ไม่ตั้ง = ไม่เปิด port เลย เหมาะกับการรัน local)
 
 ### การเชื่อม OpenClaw (Telegram/WhatsApp ฯลฯ)
 1. รัน server: `python src/server.py`
 2. ชี้ webhook ของ OpenClaw gateway ไปที่ `POST http://<host>:8000/openclaw/webhook` ส่ง `{chat_id, text}`
 3. (แนะนำ) ตั้ง `OPENCLAW_SECRET=...` ทั้งสองฝั่ง
+
+### จะเพิ่มช่องทาง LINE / Discord — ต้องแตะอะไรบ้าง
+
+**ไม่ต้องสร้าง endpoint ใหม่** — มีอยู่แล้วทั้งหมด: `/line/webhook` ถูก mount อัตโนมัติใน `src/server.py` (ตรวจ `X-Line-Signature` + ตอบ 200 ทันทีแล้วประมวลผล LLM ใน background เพราะ LINE timeout แค่ 2 วิ) ส่วน Discord **ไม่ใช้ webhook เลย** — ใช้ gateway websocket จึงรันเป็น process แยก
+
+| ต้องเพิ่ม | LINE | Discord |
+|---|---|---|
+| env var | `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_CHANNEL_SECRET` | `DISCORD_BOT_TOKEN` |
+| ฝั่งผู้ให้บริการ | Webhook URL = `https://<domain>/line/webhook` → Verify → Enable | เปิด Message Content Intent + เชิญบอทด้วย OAuth2 URL |
+| วิธีรัน | process เดียวกับเว็บ (ไม่ต้องทำอะไรเพิ่ม) | แยก process: `python src/discord_bot.py` |
+| ตรวจสอบ | `GET /line/health` | log `[discord_bot] logged in as ...` |
+| ข้อควรรู้ | reply token อายุ ~30 วิ — ถ้า LLM ช้ากว่านั้นจะ fallback ไป Push API (นับ quota) | ต้องออนไลน์ตลอด — Cloud Run ต้อง `--min-instances 1 --no-cpu-throttling` (มีค่าใช้จ่ายรายเดือน) |
+
+คำสั่ง Cloud Run ของทั้งสองช่องทางอยู่ใน **`gcp_deploy_gcs.txt`** (ท้ายไฟล์)
+
+### ปรับโปรไฟล์บอทบนเว็บ (รูป + ชื่อ)
+*   **เฉพาะเบราว์เซอร์ตัวเอง:** ⚙️ ตั้งค่า → **โปรไฟล์ผู้ช่วย** → 📷 เลือกรูปของฉัน (ย่อเป็น 256px เก็บใน `localStorage`, ใช้เป็น favicon ด้วย) · ช่องชื่อผู้ช่วยแก้ได้ทันที · ↺ กลับไปใช้มาสคอต
+*   **ให้ทุกคนเห็นรูปเดียวกัน:** วางไฟล์ `src/web/bot-avatar.jpg` (หรือ `.jpeg`/`.png`/`.webp`) แล้ว deploy ใหม่ → เสิร์ฟที่ `GET /bot-avatar.jpg` แบบเดียวกัน (ถ้าไม่มีไฟล์จะ 404 แล้วหน้าเว็บถอยไปใช้มาสคอต emoji อัตโนมัติ)
+*   แนะนำรูปสี่เหลี่ยมจัตุรัส ≥ 512×512 (ระบบครอปกลาง + ย่อให้เองอยู่แล้ว — ไฟล์ default ปัจจุบัน 512×512 ~40KB)
+*   **สลับภาษา UI (ไทย / English):** ⚙️ ตั้งค่า → ภาษา — แปลป้ายทั้งหมด (สถานะ, ปุ่ม, แผนภาพเส้นทางการวิเคราะห์, การ์ดอ้างอิง, คำถามแนะนำ, favicon title) · ชื่อบอทจะเปลี่ยนตามภาษาเมื่อยังไม่ได้ตั้งชื่อเอง · ค่าเริ่มต้นคือไทย (ผู้ใช้ที่เคยบันทึกค่าจะได้ค่าเดิม)
+*   *หมายเหตุ:* การสลับ UI ไม่ได้เปลี่ยน **ภาษาของคำตอบ** — prompt ฝั่งเซิร์ฟเวอร์ยังสั่งให้ตอบอ้างมาตราเป็นไทยเสมอ
 
 ---
 

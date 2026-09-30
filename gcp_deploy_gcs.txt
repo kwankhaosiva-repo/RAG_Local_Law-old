@@ -138,3 +138,41 @@
 # - ใช้ Reply API (ฟรี ไม่นับ quota) ถ้า token หมดอายุจะ fallback ไป Push API (นับ quota)
 # - ใน LINE Developers Console: Webhook URL = https://<cloud-run-url>/line/webhook
 #   ปิด auto-reply/greeting ของ Official Account และอย่าเปิด "Use grouped responses"
+#
+# ============================================================
+# เปิดช่องทาง LINE / Discord เพิ่ม (ไม่ต้องเขียน endpoint ใหม่)
+# ============================================================
+# endpoint ที่มีอยู่แล้ว:
+#   POST /line/webhook      → mount อัตโนมัติใน src/server.py (มี signature check + background task)
+#   GET  /line/health       → {"ok":true,"configured":true} เมื่อใส่ token+secret แล้ว
+#   Discord                 → ไม่ใช้ webhook, ใช้ gateway websocket (รันแยก process)
+#
+# 1) LINE — ใส่ env แล้ว restart service (ไม่ต้อง build image ใหม่):
+#      gcloud run services update rag-law --region asia-southeast1 --project rag-law-509304 \
+#        --update-env-vars "LINE_CHANNEL_ACCESS_TOKEN=xxx,LINE_CHANNEL_SECRET=yyy"
+#    หรือเพิ่ม 2 บรรทัดนี้ใน secret env_law แล้ว redeploy
+#    ตรวจ: curl https://<cloud-run-url>/line/health  → configured: true
+#    หมายเหตุ: ถ้าใช้ min-instances=0 ตอนกด Verify ใน LINE Console ครั้งแรกอาจ timeout
+#    (cold start + โหลด embedding) — กด Verify ซ้ำอีกครั้งพอ
+#
+# 2) Discord — รันเป็น Cloud Run service ที่ 2 (บอทต้องออนไลน์ตลอด ไม่ scale to zero):
+#      gcloud run deploy rag-law-discord --source . --region asia-southeast1 --project rag-law-509304 \
+#        --command python --args src/discord_bot.py \
+#        --min-instances 1 --max-instances 1 --no-cpu-throttling \
+#        --memory 2Gi --cpu 1 --port 8080 --allow-unauthenticated \
+#        --set-env-vars "DISCORD_HEALTH_PORT=8080,VECTOR_STORE=pinecone,LLM_PROVIDER=groq" \
+#        --set-secrets "ENV_LAW=env_law:latest"
+#    * DISCORD_HEALTH_PORT ทำให้บอทเปิด HTTP server ตอบ 200 (Cloud Run บังคับว่าต้องมี port)
+#      ถ้าไม่ตั้ง บอทจะไม่เปิด port เลย (ใช้ตอนรัน local)
+#    * ค่าใช้จ่าย: min-instances=1 + no-cpu-throttling = จ่ายตลอดเดือน (~1-2 พันบาท/เดือน)
+#      ทางเลือกฟรี: รัน `python src/discord_bot.py` บนเครื่องตัวเอง หรือ small VM
+#    * ต้องเปิด Message Content Intent ใน Discord Developer Portal
+#
+# --- รูปโปรไฟล์บอทบนเว็บ ---
+# 0) ค่า default ปัจจุบัน = src/web/bot-avatar.jpg (512x512, ~40KB) ใช้เป็นรูปโปรไฟล์ทุกคน
+#    แก้รูปใหม่: ทับไฟล์นี้แล้ว rebuild + deploy (ไฟล์อยู่ใน src/ จึงติดไปกับ image อัตโนมัติ)
+#      sips -Z 512 --cropToHeightWidth 512 512 <รูปใหม่> --out src/web/bot-avatar.jpg
+# 1) ให้ทุกคนเห็นเหมือนกัน: วางไฟล์รูปที่ src/web/bot-avatar.jpg (หรือ .jpeg/.png/.webp) แล้ว deploy ใหม่
+#    (เสิร์ฟผ่าน GET /bot-avatar.jpg — ถ้าไม่มีไฟล์จะ 404 แล้วหน้าเว็บถอยไปใช้มาสคอต emoji)
+# 2) เฉพาะเบราว์เซอร์ตัวเอง: กด ⚙️ ตั้งค่า → "โปรไฟล์ผู้ช่วย" → 📷 เลือกรูปของฉัน
+#    (รูปถูกย่อเป็น 256px เก็บใน localStorage + ใช้เป็น favicon ด้วย)

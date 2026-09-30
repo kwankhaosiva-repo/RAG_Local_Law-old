@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="th" data-lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thai Legal RAG Chatbot — Presentation</title>
+<style>
+  :root{
+    --accent:#1d4ed8;
+    --accent-soft:#eef2ff;
+    --ink:#17203a;
+    --ink-soft:#4b5570;
+    --line:#e3e7ef;
+    --bg:#ffffff;
+    --bg-alt:#f7f8fb;
+    --card:#ffffff;
+    --good:#0f766e;
+    --warn:#b45309;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  html[data-lang="th"] .en{display:none !important}
+  html[data-lang="en"] .th{display:none !important}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Noto Sans Thai","Leelawadee UI","Thonburi",sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    line-height:1.75;
+    font-size:17px;
+  }
+  /* progress bar */
+  #progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:50;transition:width .1s linear}
+  /* header */
+  header{
+    position:sticky;top:0;z-index:40;
+    background:rgba(255,255,255,.92);backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);
+  }
+  .header-in{
+    max-width:960px;margin:0 auto;padding:12px 24px;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+  }
+  .brand{font-weight:700;font-size:15px;letter-spacing:.02em}
+  .brand span{color:var(--accent)}
+  .lang-toggle{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}
+  .lang-toggle button{
+    border:0;background:transparent;cursor:pointer;
+    font:inherit;font-size:13px;font-weight:600;
+    padding:6px 16px;color:var(--ink-soft);
+  }
+  .lang-toggle button.active{background:var(--accent);color:#fff}
+  /* layout */
+  main{max-width:960px;margin:0 auto;padding:0 24px}
+  section{padding:72px 0;border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:0}
+  section.alt{background:var(--bg-alt);max-width:none}
+  section.alt > *{max-width:960px;margin-left:auto;margin-right:auto}
+  .kicker{
+    display:inline-block;font-size:12px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);
+    background:var(--accent-soft);border-radius:999px;padding:4px 14px;margin-bottom:16px;
+  }
+  h1{font-size:clamp(30px,5vw,46px);line-height:1.25;letter-spacing:-.01em}
+  h2{font-size:clamp(24px,3.5vw,32px);line-height:1.3;margin-bottom:20px;letter-spacing:-.01em}
+  h3{font-size:19px;margin-bottom:8px}
+  p{margin-bottom:16px;color:var(--ink-soft)}
+  p.lead{font-size:19px;color:var(--ink)}
+  strong{color:var(--ink)}
+  a{color:var(--accent)}
+  ul.clean{list-style:none;margin:8px 0 16px}
+  ul.clean li{position:relative;padding-left:26px;margin-bottom:10px;color:var(--ink-soft)}
+  ul.clean li::before{
+    content:"";position:absolute;left:4px;top:11px;
+    width:8px;height:8px;border-radius:50%;background:var(--accent);
+  }
+  /* hero */
+  .hero{padding:88px 0 72px;border-bottom:1px solid var(--line)}
+  .hero .tag{font-size:14px;color:var(--ink-soft);margin-top:20px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+  .chip{
+    font-size:13px;font-weight:600;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 14px;
+  }
+  .chip.accent{background:var(--accent-soft);border-color:#dbe4ff;color:var(--accent)}
+  .scroll-hint{margin-top:44px;font-size:14px;color:var(--ink-soft);display:flex;align-items:center;gap:8px}
+  .scroll-hint .arrow{animation:bob 1.6s infinite;font-size:18px;color:var(--accent)}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+  .toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:40px}
+  .toc a{
+    display:block;font-size:14px;font-weight:600;text-decoration:none;color:var(--ink);
+    border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;background:#fff;
+    transition:border-color .15s, color .15s;
+  }
+  .toc a:hover{border-color:var(--accent);color:var(--accent)}
+  .toc a small{display:block;font-weight:400;color:var(--ink-soft);font-size:12px;margin-top:2px}
+  /* cards */
+  .cards{display:grid;gap:16px;margin-top:24px}
+  .cards.two{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 24px;
+  }
+  .card .num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:13px;font-weight:700;margin-bottom:10px;
+  }
+  .card .prob{color:var(--warn);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+  .card p{margin-bottom:0;font-size:15.5px}
+  .card .fix{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:15.5px;color:var(--ink-soft)}
+  .card .fix strong{color:var(--good)}
+  /* narrative callout */
+  .callout{
+    background:var(--accent-soft);border-left:4px solid var(--accent);
+    border-radius:0 var(--radius) var(--radius) 0;
+    padding:18px 22px;margin:24px 0;font-size:16.5px;color:var(--ink);
+  }
+  /* tables */
+  .table-wrap{overflow-x:auto;margin-top:24px;border:1px solid var(--line);border-radius:var(--radius);background:#fff}
+  table{width:100%;border-collapse:collapse;font-size:15px;min-width:640px}
+  th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--bg-alt);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)}
+  tr:last-child td{border-bottom:0}
+  td:first-child{font-weight:700;color:var(--ink);white-space:nowrap}
+  /* architecture diagram */
+  .diagram{margin-top:28px;display:flex;flex-direction:column;align-items:center;gap:0}
+  .d-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .d-node{
+    background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 20px;font-size:14.5px;font-weight:600;text-align:center;min-width:150px;
+    box-shadow:0 1px 2px rgba(23,32,58,.05);
+  }
+  .d-node small{display:block;font-weight:400;color:var(--ink-soft);font-size:12.5px;margin-top:2px}
+  .d-node.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .d-node.primary small{color:#dbe4ff}
+  .d-node.accent{background:var(--accent-soft);border-color:#dbe4ff}
+  .d-arrow{color:var(--accent);font-size:20px;line-height:1;padding:8px 0;font-weight:700}
+  .d-steps{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center}
+  .d-step{
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    padding:8px 12px;font-size:13px;font-weight:600;
+  }
+  .d-plus{color:var(--ink-soft);font-size:14px;padding:0 2px}
+  .d-side{
+    margin-top:14px;font-size:13px;color:var(--ink-soft);
+    background:var(--bg-alt);border:1px dashed var(--line);border-radius:var(--radius);
+    padding:10px 18px;text-align:center;max-width:640px;
+  }
+  /* steps (workflow) */
+  .steps{counter-reset:step;margin-top:24px}
+  .step{
+    position:relative;padding:0 0 26px 56px;border-left:2px solid var(--line);
+    margin-left:16px;
+  }
+  .step:last-child{border-left-color:transparent;padding-bottom:0}
+  .step::before{
+    counter-increment:step;content:counter(step);
+    position:absolute;left:-17px;top:0;
+    width:32px;height:32px;border-radius:50%;
+    background:#fff;border:2px solid var(--accent);color:var(--accent);
+    font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;
+  }
+  .step h3{margin-bottom:4px}
+  .step p{font-size:15.5px;margin-bottom:0}
+  /* outcomes */
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-top:24px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .stat .big{font-size:26px;font-weight:800;color:var(--accent);line-height:1.2}
+  .stat .lbl{font-size:14px;color:var(--ink-soft);margin-top:6px}
+  /* footer */
+  footer{background:var(--bg-alt);border-top:1px solid var(--line);padding:36px 24px;text-align:center}
+  footer p{font-size:14px;margin:0 auto;max-width:720px}
+  @media (max-width:640px){
+    body{font-size:16px}
+    section{padding:56px 0}
+    .hero{padding:64px 0 56px}
+    .step{padding-left:44px}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header>
+  <div class="header-in">
+    <div class="brand">⚖️ Thai Legal <span>RAG</span> Chatbot</div>
+    <div class="lang-toggle" role="group" aria-label="Language">
+      <button id="btn-th" class="active" onclick="setLang('th')">ไทย</button>
+      <button id="btn-en" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="kicker"><span class="th">การนำเสนอโปรเจกต์ · Project Presentation</span><span class="en">Project Presentation · การนำเสนอโปรเจกต์</span></div>
+    <h1>Thai Legal RAG Chatbot</h1>
+    <p class="lead" style="margin-top:16px">
+      <span class="th">แชทบอทที่ปรึกษากฎหมายไทยอัจฉริยะ หลายช่องทาง — ตอบพร้อมอ้างอิงมาตราจริงจากฐานกฎหมาย โดยยึดเนื้อหากฎหมายเท่านั้น <strong>ไม่เดา ไม่ hallucinate</strong></span>
+      <span class="en">An intelligent, multi-channel Thai legal advisory chatbot — answering with real statute citations drawn strictly from the law itself. <strong>No guessing, no hallucination.</strong></span>
+    </p>
+    <div class="chips">
+      <span class="chip accent">Web</span>
+      <span class="chip accent">LINE</span>
+      <span class="chip accent">Discord</span>
+      <span class="chip accent">OpenClaw</span>
+      <span class="chip accent">CLI</span>
+      <span class="chip">LangGraph</span>
+      <span class="chip">FastAPI</span>
+      <span class="chip">Google Cloud Run</span>
+    </div>
+    <p class="tag">
+      <span class="th">Live บน Cloud Run: </span><span class="en">Live on Cloud Run: </span>
+      <a href="https://rag-law-226111202600.asia-southeast1.run.app">rag-law-226111202600.asia-southeast1.run.app</a>
+    </p>
+
+    <div class="toc">
+      <a href="#ch1"><span class="th">1 · ทำไมถึงเริ่มทำ</span><span class="en">1 · Why we started</span><small><span class="th">แรงจูงใจและปัญหาของสังคม</span><span class="en">Motivation and the societal gap</span></small></a>
+      <a href="#ch2"><span class="th">2 · เจอปัญหาอะไรบ้าง</span><span class="en">2 · Problems we hit</span><small><span class="th">7 อุปสรรคระหว่างทาง + วิธีแก้</span><span class="en">7 obstacles along the way + fixes</span></small></a>
+      <a href="#ch3"><span class="th">3 · ทำไมต้องเป็นวิธีนี้</span><span class="en">3 · Why this approach</span><small><span class="th">RAG ดีกว่า fine-tune อย่างไร</span><span class="en">Why RAG beats fine-tuning</span></small></a>
+      <a href="#ch4"><span class="th">4 · ทำไมเลือก library เหล่านี้</span><span class="en">4 · Why these libraries</span><small><span class="th">เปรียบเทียบกับทางเลือกอื่น</span><span class="en">Compared with the alternatives</span></small></a>
+      <a href="#ch5"><span class="th">5 · สถาปัตยกรรม</span><span class="en">5 · Architecture</span><small><span class="th">แผนภาพระบบ 1 ภาพ</span><span class="en">The system in one picture</span></small></a>
+      <a href="#ch6"><span class="th">6 · Tech Stack</span><span class="en">6 · Tech Stack</span><small><span class="th">เครื่องมือทั้งหมดของโปรเจกต์</span><span class="en">Every tool in the project</span></small></a>
+      <a href="#ch7"><span class="th">7 · Workflow</span><span class="en">7 · Workflow</span><small><span class="th">ตั้งแต่ crawler ถึงคำตอบ</span><span class="en">From crawler to answer</span></small></a>
+      <a href="#ch8"><span class="th">8 · ผลลัพธ์และแผนต่อยอด</span><span class="en">8 · Outcomes &amp; next steps</span><small><span class="th">สิ่งที่ได้ และจะทำอะไรต่อ</span><span class="en">What we got, what comes next</span></small></a>
+    </div>
+
+    <div class="scroll-hint">
+      <span class="arrow">↓</span>
+      <span class="th">เลื่อนลงเพื่ออ่านเรื่องราวทั้งหมด</span>
+      <span class="en">Scroll down to read the whole story</span>
+    </div>
+  </section>
+
+  <!-- ============ CH1: WHY ============ -->
+  <section id="ch1">
+    <div class="kicker"><span class="th">บทที่ 1</span><span class="en">Chapter 1</span></div>
+    <h2><span class="th">ทำไมถึงเริ่มทำ</span><span class="en">Why we started</span></h2>
+    <p class="lead">
+      <span class="th">เรื่องมันเริ่มจากความเหลื่อมล้ำง่ายๆ — คนธรรมดาเข้าถึงคำปรึกษากฎหมายเบื้องต้นได้ยากและแพง ขณะที่กฎหมายไทยมีปริมาณมหาศาลและแก้ไขบ่อย ใครมีเงินจ้างทนายก็รู้กฎหมาย ใครไม่มีก็ได้แต่เดา</span>
+      <span class="en">It started from a simple inequality — ordinary people struggle to access even basic legal advice, and it is expensive. Meanwhile Thai law is vast and amended constantly. If you can afford a lawyer, you know the law; if you cannot, you are left guessing.</span>
+    </p>
+    <p>
+      <span class="th"><LM ทั่วไป> น่าจะช่วยได้… แต่ไม่ใช่ LLM ธรรมดาตัวหนึ่ง เพราะมันมีนิสัยอันตราย 3 อย่างสำหรับงานกฎหมาย:</span>
+      <span class="en">A general LLM could help… but not an ordinary one — it has three dangerous habits for legal work:</span>
+    </p>
+    <ul class="clean">
+      <li><span class="th"><strong>ตอบจากความจำเดิม</strong> — กฎหมายใหม่หรือที่แก้ไขแล้วที่อยู่นอก training data ทำให้คำตอบล้าสมัยโดยไม่รู้ตัว</span>
+          <span class="en"><strong>Answers from memory</strong> — new or amended laws outside the training data make answers silently outdated.</span></li>
+      <li><span class="th"><strong> hallucinate เลขมาตรา</strong> — ที่อันตรายที่สุดคือมัน “มั่ว” แล้วดูมั่นใจมาก ยกมาตราที่ไม่มีอยู่จริงในกฎหมาย</span>
+          <span class="en"><strong>Hallucinates section numbers</strong> — worst of all, it fabricates confidently, citing sections that do not exist in the statute.</span></li>
+      <li><span class="th"><strong>ค้นหาด้วยคีย์เวิร์ดแบบเดิมใช้ไม่ได้</strong> — ภาษาไทยไม่มีการเว้นวรรคคำ และศัพท์กฎหมายเป็นทางการกว่าภาษาพูดที่คนถาม</span>
+          <span class="en"><strong>Classic keyword search falls flat</strong> — Thai has no word spacing, and legal vocabulary differs sharply from how people actually ask.</span></li>
+    </ul>
+    <div class="callout">
+      <span class="th">🎯 <strong>เป้าหมายของโปรเจกต์:</strong> แชทบอทที่ <strong>ค้นก่อนตอบเสมอ</strong> อ้างอิงกลับไปถึงมาตราจริงได้ และกล้าตอบว่า “ไม่พบข้อมูล” เมื่อฐานกฎหมายไม่มีคำตอบ — ความน่าเชื่อถือสำคัญกว่าความฉลาด</span>
+      <span class="en">🎯 <strong>The goal:</strong> a chatbot that <strong>always retrieves before answering</strong>, cites back to real statutes, and dares to say “not found” when the corpus has no answer — trustworthiness over cleverness.</span>
+    </div>
+  </section>
+
+  <!-- ============ CH2: PROBLEMS ============ -->
+  <section id="ch2" class="alt">
+    <div class="kicker"><span class="th">บทที่ 2</span><span class="en">Chapter 2</span></div>
+    <h2><span class="th">เจอปัญหาอะไรบ้าง และแก้ยังไง</span><span class="en">Problems we hit — and how we fixed them</span></h2>
+    <p>
+      <span class="th">ระหว่างทางไม่ได้ราบรื่นเลย นี่คือ 7 อุปสรรคจริงที่เจอ พร้อมวิธีแก้ในโค้ดจริงของโปรเจกต์:</span>
+      <span class="en">It was anything but smooth. Here are 7 real obstacles and how they were solved in the actual codebase:</span>
+    </p>
+
+    <div class="cards two">
+      <div class="card">
+        <div class="num">1</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">LLM มั่วเลขมาตรา</span><span class="en">The LLM fabricates section numbers</span></h3>
+        <p><span class="th">คำตอบดูผ่านหมด แต่พอไปเปิดกฎหมายจริงกลับไม่มีมาตราที่อ้างถึง — อันตรายที่สุดสำหรับงานกฎหมาย</span>
+           <span class="en">The answer looks perfect — but open the actual statute and the cited section does not exist. Fatal for legal work.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th">Expert Legal Prompt ห้ามอ้างมาตรานอก Context + <strong>Doc Grading</strong> ให้ LLM ให้คะแนนเอกสารก่อนตอบเสมอ ถ้าไม่เกี่ยวพอ ตอบตรงๆ ว่าไม่พบข้อมูล</span>
+          <span class="en">Expert Legal Prompt forbidding citations outside the Context + <strong>Doc Grading</strong> so the LLM scores retrieved docs before answering; if relevance is insufficient it plainly says “not found.”</span></div>
+      </div>
+
+      <div class="card">
+        <div class="num">2</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">ค้นคีย์เวิร์ดหาไม่เจอ</span><span class="en">Keyword search finds nothing</span></h3>
+        <p><span class="th">ภาษาไทยไม่มีเว้นวรรค ศัพท์กฎหมาย (“ละเมิด”) ต่างจากภาษาพูด (“ทำผิด”) — keyword search ตรงๆ พลาดหมด</span>
+           <span class="en">Thai has no spaces; legal terms (“ละเมิด” / tort) differ from colloquial phrasing (“ทำผิด” / did wrong) — plain keyword search misses everything.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th"><strong>Hybrid Retrieval</strong>: Semantic (HuggingFace embeddings) + Keyword (BM25 ตัดคำไทยด้วย PyThaiNLP) รวมคะแนนด้วย Weighted RRF</span>
+          <span class="en"><strong>Hybrid retrieval</strong>: semantic (HuggingFace embeddings) + keyword (BM25 with PyThaiNLP segmentation) fused by Weighted RRF.</span></div>
+      </div>
+
+      <div class="card">
+        <div class="num">3</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">ค้นแต่ “คำ” ไม่เข้าใจ “เจตนา”</span><span class="en">Search matches words, not intent</span></h3>
+        <p><span class="th">Vector-only หลง keyword trap ส่วน keyword-only ไม่เข้าใจคำถาม และคำถามเทิร์น 2 อย่าง “แล้วมาตราถัดไปล่ะ” ค้นไม่ได้เลย</span>
+           <span class="en">Vector-only falls into keyword traps; keyword-only misunderstands questions; and turn-2 follow-ups like “what about the next section?” cannot be searched at all.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th"><strong>Weighted RRF 0.7/0.3</strong> (vector เหนือกว่าแต่ keyword ยังมีเสียง ปรับผ่าน env) + <strong>Query Rewrite</strong> รวมประวัติแชทเป็นคำถามสมบูรณ์ก่อนค้น</span>
+          <span class="en"><strong>Weighted RRF 0.7/0.3</strong> (vector dominant, keyword still heard, tunable via env) + <strong>query rewrite</strong> that merges chat history into a complete question before searching.</span></div>
+      </div>
+
+      <div class="card">
+        <div class="num">4</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">Free-tier LLM quota หมด = บริการล่ม</span><span class="en">Free-tier quota runs out = outage</span></h3>
+        <p><span class="th">พึ่ง provider เจ้าเดียวพอ quota หมดหรือ service ล่ม แชทบอทตอบไม่ได้ทันที — เคยเจอจริงๆ</span>
+           <span class="en">Rely on one provider and a quota exhaustion or outage takes the bot down instantly — we actually hit this.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th"><strong>Multi-LLM Failover Chain</strong> (Groq → UNOROUTER → Mistral → Ollama) ส่งต่อ prompt+context ให้ตัวถัดไปทันที, error แบบ deterministic ข้ามไม่ retry, error ชั่วคราว retry 1 ครั้งด้วย backoff</span>
+          <span class="en"><strong>Multi-LLM failover chain</strong> (Groq → UNOROUTER → Mistral → Ollama) forwards prompt+context to the next provider instantly; deterministic errors skip without retry, transient ones retry once with backoff.</span></div>
+      </div>
+
+      <div class="card">
+        <div class="num">5</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">LINE ตัด connection ที่ 2 วินาที</span><span class="en">LINE times out at 2 seconds</span></h3>
+        <p><span class="th">RAG + LLM ใช้เวลาหลายวินาที แต่ LINE webhook ให้เวลาแค่ 2 วินาที — ตอบช้าคือ webhook ถูกตีกลับ</span>
+           <span class="en">RAG + LLM takes seconds, but a LINE webhook only gets 2 seconds — answer slowly and the webhook is rejected.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th">ตรวจ <code>X-Line-Signature</code> → <strong>ตอบ 200 ทันที</strong> แล้วประมวลผลใน background, Reply API (ฟรี) fallback เป็น Push ถ้า reply token ใกล้หมดอายุ</span>
+          <span class="en">Verify <code>X-Line-Signature</code> → <strong>return 200 immediately</strong>, process in the background; Reply API (free) falls back to Push when the reply token is about to expire.</span></div>
+      </div>
+
+      <div class="card">
+        <div class="num">6</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">Splitter ตัดหัวมาตราเพี้ยน</span><span class="en">The splitter mangled section heads</span></h3>
+        <p><span class="th">regex ตัวเก่าอ่าน “มาตรา ๑๕๐๗” ผิดเป็น “มาตรา ๑๕” — section_id ของ chunk เพี้ยน การอ้างอิงจึงชี้ผิดมาตรา</span>
+           <span class="en">The old regex misread “มาตรา ๑๕๐๗” as “มาตรา ๑๕” — chunk section_ids skewed, so citations pointed to the wrong section.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th"><strong>Thai Law Section Splitter</strong> ใหม่ จับครบทุกรูปแบบ (เลขไทย, มาตราที่ 7/1, ทวิ/ตรี/จัตวา, ข้อ) + <strong>regression test</strong> ป้องกันกลับมาเป็นซ้ำ</span>
+          <span class="en">A new <strong>Thai Law Section Splitter</strong> covering every form (Thai numerals, section 7/1, ทวิ/ตรี/จัตวา, clauses) + a <strong>regression test</strong> so it can never silently return.</span></div>
+      </div>
+
+      <div class="card">
+        <div class="num">7</div>
+        <div class="prob"><span class="th">ปัญหา</span><span class="en">Problem</span></div>
+        <h3><span class="th">Cloud Run: cold start + memory limit</span><span class="en">Cloud Run: cold start + memory limit</span></h3>
+        <p><span class="th">chroma_db ~5GB โหลดตอน startup ช้ามาก และ default 512Mi ทำให้ <code>POST /chat</code> คืน 503 “Memory limit exceeded”</span>
+           <span class="en">The ~5GB chroma_db made startup painfully slow, and the default 512Mi returned 503 “Memory limit exceeded” on <code>POST /chat</code>.</span></p>
+        <div class="fix"><strong><span class="th">แก้:</span><span class="en">Fix:</span></strong>
+          <span class="th">สลับ <strong>Dual Vector Store</strong> ด้วย env เดียว — chroma: rsync จาก GCS เป็น background หลัง bind port; pinecone: ไม่มี cold start เลย (memory 4Gi / 2Gi ตามโหมด)</span>
+          <span class="en"><strong>Dual vector store</strong> switched by one env var — chroma: rsync from GCS in the background after binding the port; pinecone: no cold start at all (4Gi / 2Gi per mode).</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CH3: WHY RAG ============ -->
+  <section id="ch3">
+    <div class="kicker"><span class="th">บทที่ 3</span><span class="en">Chapter 3</span></div>
+    <h2><span class="th">ทำไมถึงเลือกวิธีนี้ — RAG ดีกว่าทางเลือกอื่นอย่างไร</span><span class="en">Why this approach — why RAG over the alternatives</span></h2>
+    <p>
+      <span class="th">ทางเลือกมีแค่ไม่กี่ทาง ลองผิดลองถูกมาแล้ว:</span>
+      <span class="en">There are only a few options, and we weighed each one:</span>
+    </p>
+    <div class="cards two">
+      <div class="card">
+        <h3><span class="th">❌ Fine-tune โมเดลเอง</span><span class="en">❌ Fine-tune our own model</span></h3>
+        <p><span class="th">กฎหมายแก้ทุกสัปดาห์ → fine-tune ใหม่ทุกครั้งที่มีการแก้ไข ต้นทุนสูง ต้องมี GPU และยัง hallucinate ได้อยู่ดีเมื่อไม่มีข้อมูลใน weight</span>
+           <span class="en">The law changes weekly → retrain on every amendment: expensive, GPU-bound, and it still hallucinates when the answer is not in the weights.</span></p>
+      </div>
+      <div class="card">
+        <h3><span class="th">❌ Chatbot ตรงๆ ไม่มี retrieval</span><span class="en">❌ Plain LLM chatbot, no retrieval</span></h3>
+        <p><span class="th">ตอบเร็วและง่าย แต่ไม่มีทางอ้างอิงมาตราจริงได้ และไม่มีทาง “ไม่รู้” อย่างซื่อสัตย์</span>
+           <span class="en">Fast and easy, but it can never cite a real statute, nor honestly admit when it does not know.</span></p>
+      </div>
+      <div class="card">
+        <h3><span class="th">✅ RAG — ค้นก่อนตอบเสมอ</span><span class="en">✅ RAG — always retrieve first</span></h3>
+        <p><span class="th">อัปเดตข้อมูลทันทีแค่ ingest ใหม่ ไม่ต้อง train, คำตอบมีที่มาตรวจสอบได้, ควบคุมต้นทุนได้ด้วย free-tier LLM</span>
+           <span class="en">Refresh data by re-ingesting — no training. Answers have a traceable source, and cost stays low on free-tier LLMs.</span></p>
+      </div>
+      <div class="card">
+        <h3><span class="th">🔒 คุมเข้มด้วยเกรดก่อนตอบ</span><span class="en">🔒 Tightened with pre-answer grading</span></h3>
+        <p><span class="th">RAG ธรรมดาอาจยังดึงเอกสารผิด → จึง <strong>ให้ LLM ให้คะแนนความเกี่ยวก่อนตอบทุกครั้ง</strong> ถ้าไม่ผ่าน ตอบว่าไม่พบ + แนะนำกฎหมายที่น่าจะเกี่ยว</span>
+           <span class="en">Vanilla RAG can still retrieve the wrong docs → so the <strong>LLM grades relevance before every answer</strong>; if it fails, the bot says “not found” and points to likely-relevant laws.</span></p>
+      </div>
+    </div>
+    <div class="callout">
+      <span class="th">💡 <strong>หลักคิด:</strong> ฐานความรู้แยกจากตัวโมเดล — โมเดลเป็นแค่ “นักกฎหมายที่อ่านเอกสารให้” แต่เอกสารคือความจริง และเอกสารอัปเดตได้โดยไม่แตะโค้ด</span>
+      <span class="en">💡 <strong>Principle:</strong> separate the knowledge base from the model — the model is merely “a lawyer reading the documents,” the documents are the truth, and documents can be refreshed without touching code.</span>
+    </div>
+  </section>
+
+  <!-- ============ CH4: WHY LIBRARIES ============ -->
+  <section id="ch4" class="alt">
+    <div class="kicker"><span class="th">บทที่ 4</span><span class="en">Chapter 4</span></div>
+    <h2><span class="th">ทำไมเลือก library เหล่านี้</span><span class="en">Why we chose these libraries</span></h2>
+    <p><span class="th">ทุกตัวถูกเลือกด้วยเหตุผลที่ตรวจสอบได้ — ตารางนี้เทียบกับทางเลือกที่ “ไม่ได้ใช้”:</span>
+       <span class="en">Every choice has a traceable reason — here is how it compares with what we did <em>not</em> use:</span></p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><span class="th">เครื่องมือ</span><span class="en">Tool</span></th>
+            <th><span class="th">ทำไมถึงเลือก</span><span class="en">Why we chose it</span></th>
+            <th><span class="th">ทางเลือกที่ไม่ใช้ ทำไม</span><span class="en">Rejected alternative &amp; why</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LangGraph</td>
+            <td><span class="th">StateGraph 4 ขั้น (intent → rewrite → retrieve+grade → generate) มองเห็น flow ชัดเจน, มี checkpoint เก็บ memory หลายเทิร์น, แยก node ทดสอบได้เอกรวมถึง unit test ได้</span>
+                <span class="en">A 4-node StateGraph (intent → rewrite → retrieve+grade → generate) makes the flow explicit, checkpoints carry multi-turn memory, and each node is independently testable.</span></td>
+            <td><span class="th">LangChain chain ยาว ๆ — control flow ซ่อนอยู่ใน framework ดีบักยากเมื่อมี branching</span>
+                <span class="en">A long LangChain chain — control flow hides inside the framework and becomes hard to debug once branching appears.</span></td>
+          </tr>
+          <tr>
+            <td>PyThaiNLP</td>
+            <td><span class="th">ตัดคำไทยแม่นยำ (รวมเลขไทย) — BM25 ของtokeniser ภาษาอังกฤษใช้กับข้อกฎหมายไทยไม่ได้เลย</span>
+                <span class="en">Accurate Thai word segmentation (incl. Thai numerals) — an English tokenizer’s BM25 is unusable on Thai statute text.</span></td>
+            <td><span class="th">spaCy / NLTK tokenizers — ออกแบบเพื่ออังกฤษ ภาษาไทยไม่มี space จะพังทันที</span>
+                <span class="en">spaCy / NLTK tokenizers — built for English; space-less Thai breaks them immediately.</span></td>
+          </tr>
+          <tr>
+            <td>HuggingFace MiniLM<br>(multilingual, 384-dim)</td>
+            <td><span class="th">รองรับไทยในตัว ขนาดเล็ก รัน embedding ได้บน CPU ของ Cloud Run โดยไม่เสียเงินเพิ่ม</span>
+                <span class="en">Thai-capable out of the box, small enough to embed on Cloud Run CPU for free.</span></td>
+            <td><span class="th">OpenAI embeddings — เสียเงินทุก query และ data ออกจากเครื่อง</span>
+                <span class="en">OpenAI embeddings — costs per query and ships data off-box.</span></td>
+          </tr>
+          <tr>
+            <td>Weighted RRF<br>(vector 0.7 / BM25 0.3)</td>
+            <td><span class="th">รวมจุดแข็งสองฝั่ง กัน “keyword trap” น้ำหนักปรับผ่าน env โดยไม่ต้องแก้โค้ด</span>
+                <span class="en">Fuses both strengths, avoids keyword traps, weights tunable via env without code changes.</span></td>
+            <td><span class="th">Vector-only — หลงแนวคิดใกล้เคียงแต่คนละข้อกฎหมาย; Keyword-only — ไม่เข้าใจคำถามภาษาธรรมชาติ</span>
+                <span class="en">Vector-only drifts to topically-similar but wrong statutes; keyword-only cannot handle natural questions.</span></td>
+          </tr>
+          <tr>
+            <td>ChromaDB ↔ Pinecone</td>
+            <td><span class="th">สลับด้วย env เดียว — chroma คุ้ม cost ตอน dev, pinecone ไม่มี cold start ตอน production</span>
+                <span class="en">One env var switches them — chroma is cheap for dev, pinecone has no cold start in production.</span></td>
+            <td><span class="th">ยึดเจ้าเดียว — ยึดเจ้าเดียว = แพงตอน scale หรือ slow start ตอนโหลด 5GB</span>
+                <span class="en">Single vendor — either gets pricey at scale or slow-loading at 5GB.</span></td>
+          </tr>
+          <tr>
+            <td>Failover Chain<br>(Groq → … → Ollama)</td>
+            <td><span class="th">ตัวหลัก (Groq) เร็ว ~500 tok/s และฟรี ที่เหลือเป็นตาสำรอง สลับผ่าน env ไม่ต้องแก้โค้ด ไม่มี downtime</span>
+                <span class="en">Primary (Groq) is ~500 tok/s and free; the rest are hot spares switched via env — zero downtime, zero code edits.</span></td>
+            <td><span class="th">Provider เดียว — หมด quota = ระบบล่มจริงที่เคยเจอ</span>
+                <span class="en">A single provider — quota exhaustion = real outage, as we experienced.</span></td>
+          </tr>
+          <tr>
+            <td>FastAPI + Vanilla JS</td>
+            <td><span class="th">async เหมาะกับ webhook, mount LINE/OpenClaw เข้า app เดียวได้; ฝั่งเว็บไม่มี build step เปิดใช้ได้ทันที</span>
+                <span class="en">Async suits webhooks; LINE/OpenClaw mount into one app. The web UI has no build step — open and it runs.</span></td>
+            <td><span class="th">React/Next — ต้องมี toolchain ทั้งที่ UI เป็นแชทกล่องเดียว</span>
+                <span class="en">React/Next — a full toolchain for what is essentially one chat pane.</span></td>
+          </tr>
+          <tr>
+            <td>Google Cloud Run</td>
+            <td><span class="th">serverless, ไม่ต้องดูแล server, auto-scale, ผูกกับ Secret Manager + Firestore + BigQuery ใน ecosystem เดียว</span>
+                <span class="en">Serverless with no servers to babysit, auto-scaling, and native ties to Secret Manager, Firestore and BigQuery.</span></td>
+            <td><span class="th">VM ตรง — ต้องดูแลเอง จ่ายทั้งที่ traffic ไม่สม่ำเสมอ</span>
+                <span class="en">A raw VM — self-managed, paid even when traffic is idle.</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ CH5: ARCHITECTURE ============ -->
+  <section id="ch5">
+    <div class="kicker"><span class="th">บทที่ 5</span><span class="en">Chapter 5</span></div>
+    <h2><span class="th">สถาปัตยกรรมระบบ ใน 1 ภาพ</span><span class="en">The architecture, in one picture</span></h2>
+    <p><span class="th">ทุกช่องทางใช้ agent ตัวเดียวกัน — ต่างแค่ “ทางเข้า”:</span>
+       <span class="en">Every channel runs the same agent — only the entrance differs:</span></p>
+
+    <div class="diagram">
+      <div class="d-row">
+        <span class="d-node">🌐 Web</span>
+        <span class="d-node">💬 LINE</span>
+        <span class="d-node">🎮 Discord</span>
+        <span class="d-node">🦾 OpenClaw</span>
+        <span class="d-node">⌨️ CLI</span>
+      </div>
+      <div class="d-arrow">↓</div>
+      <div class="d-node">FastAPI <small>Google Cloud Run · Asia Southeast</small></div>
+      <div class="d-arrow">↓</div>
+      <div class="d-node primary">LangGraph Agent <small>StateGraph · multi-turn memory</small></div>
+      <div class="d-arrow">↓</div>
+      <div class="d-steps">
+        <span class="d-step">1. Route Intent</span><span class="d-plus">→</span>
+        <span class="d-step">2. Rewrite Query</span><span class="d-plus">→</span>
+        <span class="d-step">3. Retrieve + Grade</span><span class="d-plus">→</span>
+        <span class="d-step">4. Generate</span>
+      </div>
+      <div class="d-arrow">↓</div>
+      <div class="d-node accent">Hybrid Retriever <small>Vector 0.7 + Thai BM25 0.3 · Weighted RRF</small></div>
+      <div class="d-arrow">↓</div>
+      <div class="d-row">
+        <span class="d-node">Pinecone <small>cloud · no cold start</small></span>
+        <span class="d-node">ChromaDB <small>local · cost-friendly</small></span>
+      </div>
+      <div class="d-arrow">↓</div>
+      <div class="d-node accent">LLM Failover Chain <small>Groq → UNOROUTER → Mistral → Ollama</small></div>
+      <div class="d-arrow">↓</div>
+      <div class="d-node primary">✅ คำตอบ + อ้างอิงมาตรา + ลิงก์เอกสารต้นทาง<small>Answer + statute citation + source document link</small></div>
+      <div class="d-side">
+        <span class="th">ระบบเสริม: Firestore (ประวัติแชท) · BigQuery (analytics คำถาม) · GCS (chroma snapshot) · Ratchakitcha Crawler (อัปเดตกฎหมายใหม่ทุกสัปดาห์)</span>
+        <span class="en">Side systems: Firestore (chat history) · BigQuery (query analytics) · GCS (chroma snapshot) · Ratchakitcha Crawler (fresh law every week)</span>
+      </div>
+    </div>
+
+    <div class="cards two" style="margin-top:32px">
+      <div class="card">
+        <h3><span class="th">🧠 4 ขั้นของ Agent</span><span class="en">🧠 The agent’s 4 steps</span></h3>
+        <ul class="clean" style="margin-bottom:0">
+          <li><span class="th"><strong>Route Intent:</strong> แยก “คำถามกฎหมาย” ให้ค้นฐานข้อมูล vs “คุยทั่วไป” ตอบสุภาพไม่ต้องค้น</span>
+              <span class="en"><strong>Route Intent:</strong> splits “legal questions” (→ search the corpus) from “small talk” (→ polite reply, no search).</span></li>
+          <li><span class="th"><strong>Rewrite Query:</strong> รวมคำถามเทิร์นก่อนๆ ให้เป็นคำถามสมบูรณ์ก่อนค้น</span>
+              <span class="en"><strong>Rewrite Query:</strong> merges earlier turns into one complete question before searching.</span></li>
+          <li><span class="th"><strong>Retrieve + Grade:</strong> ค้น hybrid แล้วให้ LLM ตรวจคุณภาพเอกสารก่อนเสมอ</span>
+              <span class="en"><strong>Retrieve + Grade:</strong> hybrid search, then the LLM always vetoes weak documents.</span></li>
+          <li><span class="th"><strong>Generate:</strong> ตอบแบบนักกฎหมาย ยก quote แล้ว “สรุป:” ฟันธง พร้อมมาตรา + ลิงก์</span>
+              <span class="en"><strong>Generate:</strong> lawyer-style answer — quote first, then a firm “summary:” with section + link.</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="th">🛡️ ตัวกรองความปลอดภัย 3 ชั้น</span><span class="en">🛡️ Three layers of safety</span></h3>
+        <ul class="clean" style="margin-bottom:0">
+          <li><span class="th"><strong>Prompt:</strong> ห้ามอ้างมาตราที่ไม่อยู่ใน Context — ถ้าไม่พอให้บอกตรงๆ ว่าข้อมูลไม่เพียงพอ</span>
+              <span class="en"><strong>Prompt:</strong> never cite a section absent from the Context — say plainly when evidence is insufficient.</span></li>
+          <li><span class="th"><strong>Grading:</strong> เอกสารที่ค้นได้ต้องผ่านคะแนนความเกี่ยวก่อนถึงเข้าถึง generation</span>
+              <span class="en"><strong>Grading:</strong> retrieved documents must pass a relevance score before reaching generation.</span></li>
+          <li><span class="th"><strong>Regression tests:</strong> ชุดเทสต์ splitter กัน section_id เพี้ยนกลับมาอีก</span>
+              <span class="en"><strong>Regression tests:</strong> a splitter test suite keeps section_ids from ever skewing again.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CH6: TECH STACK ============ -->
+  <section id="ch6" class="alt">
+    <div class="kicker"><span class="th">บทที่ 6</span><span class="en">Chapter 6</span></div>
+    <h2>Tech Stack ทั้งหมด</h2>
+    <p><span class="th">แบ่งเป็น 4 ชั้น:</span><span class="en">In four layers:</span></p>
+
+    <div class="cards two">
+      <div class="card">
+        <h3>🤖 <span class="th">AI / RAG Core</span><span class="en">AI / RAG Core</span></h3>
+        <ul class="clean" style="margin-bottom:0">
+          <li><strong>LangGraph</strong> — <span class="th">agent (StateGraph, memory, doc grading)</span><span class="en">agent (StateGraph, memory, doc grading)</span></li>
+          <li><strong>LangChain</strong> — <span class="th">retrieval pipeline, prompts, parsers</span><span class="en">retrieval pipeline, prompts, parsers</span></li>
+          <li><strong>LLM failover</strong> — <span class="th">Groq · UNOROUTER · OpenRouter · Mistral · OpenAI · Anthropic · Ollama</span><span class="en">Groq · UNOROUTER · OpenRouter · Mistral · OpenAI · Anthropic · Ollama</span></li>
+          <li><strong>HuggingFace Embeddings</strong> — <span class="th">paraphrase-multilingual-MiniLM-L12-v2 (384-dim)</span><span class="en">paraphrase-multilingual-MiniLM-L12-v2 (384-dim)</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🗄️ <span class="th">ข้อมูลและที่เก็บ</span><span class="en">Data &amp; Storage</span></h3>
+        <ul class="clean" style="margin-bottom:0">
+          <li><strong>Pinecone / ChromaDB</strong> — <span class="th">vector store สลับด้วย <code>VECTOR_STORE</code></span><span class="en">vector store, switched via <code>VECTOR_STORE</code></span></li>
+          <li><strong>Firestore</strong> — <span class="th">ประวัติแชท (rag-law-db)</span><span class="en">chat history (rag-law-db)</span></li>
+          <li><strong>BigQuery</strong> — <span class="th">query analytics (rag_law_query)</span><span class="en">query analytics (rag_law_query)</span></li>
+          <li><strong>Google Cloud Storage</strong> — <span class="th">chroma snapshot + ข้อมูลกฎหมาย</span><span class="en">chroma snapshot + law corpus</span></li>
+          <li><strong>PyThaiNLP</strong> — <span class="th">ตัดคำไทยสำหรับ BM25</span><span class="en">Thai segmentation for BM25</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>📱 <span class="th">แอปและช่องทาง</span><span class="en">App &amp; Channels</span></h3>
+        <ul class="clean" style="margin-bottom:0">
+          <li><strong>FastAPI + Vanilla JS</strong> — <span class="th">Web UI ปรับแต่งได้ (ธีม/ฟอนต์/มาสคอต/ภาษา TH-EN)</span><span class="en">customizable Web UI (theme/fonts/mascot/TH-EN language)</span></li>
+          <li><strong>LINE Messaging API</strong> — <span class="th">webhook + Reply API + Push fallback</span><span class="en">webhook + Reply API + Push fallback</span></li>
+          <li><strong>discord.py</strong> — <span class="th"><code>!ask</code>, mention, slash <code>/law</code></span><span class="en"><code>!ask</code>, mentions, slash <code>/law</code></span></li>
+          <li><strong>OpenClaw</strong> — <span class="th">bridge ไป Telegram/WhatsApp ฯลฯ</span><span class="en">bridge to Telegram/WhatsApp and more</span></li>
+          <li><strong>PyMuPDF + requests</strong> — <span class="th">Ratchakitcha crawler</span><span class="en">Ratchakitcha crawler</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>☁️ <span class="th">โครงสร้างพื้นฐาน</span><span class="en">Infrastructure</span></h3>
+        <ul class="clean" style="margin-bottom:0">
+          <li><strong>Google Cloud Run</strong> — <span class="th">serverless deploy (auto-scaling)</span><span class="en">serverless deploy (auto-scaling)</span></li>
+          <li><strong>Docker + gcloud CLI</strong> — <span class="th">containerization และ CI/deploy</span><span class="en">containerization and CI/deploy</span></li>
+          <li><strong>Secret Manager</strong> — <span class="th">env ทั้งหมดเป็นก้อนเดียว (<code>env_law</code>)</span><span class="en">all env as one blob (<code>env_law</code>)</span></li>
+          <li><strong>Cloud Build</strong> — <span class="th">build image ตอน deploy</span><span class="en">image builds at deploy time</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CH7: WORKFLOW ============ -->
+  <section id="ch7">
+    <div class="kicker"><span class="th">บทที่ 7</span><span class="en">Chapter 7</span></div>
+    <h2><span class="th">Workflow — จากกฎหมายกระดาษ สู่คำตอบแชท</span><span class="en">Workflow — from paper law to a chat answer</span></h2>
+
+    <h3 style="margin-top:28px">📦 <span class="th">เส้นทางข้อมูล (ทำอัตโนมัติต่อเนื่อง)</span><span class="en">Data pipeline (runs continuously)</span></h3>
+    <div class="steps">
+      <div class="step">
+        <h3><span class="th">Crawler ราชกิจจานุเบกษา ทุกสัปดาห์</span><span class="en">Ratchakitcha crawler, every week</span></h3>
+        <p><span class="th">ดึงประกาศใหม่จาก Open Law Data Thailand (HuggingFace) หรือ api.soc.go.th — ไม่ต้องเฝ้าด้วยคน</span>
+           <span class="en">Pulls new announcements from Open Law Data Thailand (HuggingFace) or api.soc.go.th — no human babysitting.</span></p>
+      </div>
+      <div class="step">
+        <h3><span class="th">PDF → PyMuPDF → Thai Law Section Splitter</span><span class="en">PDF → PyMuPDF → Thai Law Section Splitter</span></h3>
+        <p><span class="th">ตัด chunk ตามหัวมาตรา/ข้อครบทุกรูปแบบ ไม่ตัดกลางคำ แล้ว dedupe ด้วย hash (title + วันประกาศ)</span>
+           <span class="en">Chunks split at section/clause heads in every notation, never mid-word, then deduped by hash (title + publish date).</span></p>
+      </div>
+      <div class="step">
+        <h3><span class="th">Metadata + Prefix Context</span><span class="en">Metadata + prefix context</span></h3>
+        <p><span class="th">ทุก chunk ติด <code>title</code>, <code>section_id</code>, <code>hierarchy_level</code>, <code>publish_date</code> และแปะหัว “ส่วนของ: มาตรา X” ไว้ในตัว chunk เอง</span>
+           <span class="en">Every chunk carries <code>title</code>, <code>section_id</code>, <code>hierarchy_level</code>, <code>publish_date</code> and a “Section: มาตรา X” header baked into the text.</span></p>
+      </div>
+      <div class="step">
+        <h3><span class="th">Ingest → Vector Store</span><span class="en">Ingest → vector store</span></h3>
+        <p><span class="th">ฝังเป็น embeddings แล้วลง ChromaDB หรือ Pinecone (namespace <code>core_law</code> / <code>recent_law</code>)</span>
+           <span class="en">Embedded and written to ChromaDB or Pinecone (namespaces <code>core_law</code> / <code>recent_law</code>).</span></p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:40px">💬 <span class="th">เส้นทางคำถาม (ทุกเทิร์น)</span><span class="en">Question path (every turn)</span></h3>
+    <div class="steps">
+      <div class="step">
+        <h3><span class="th">ผู้ใช้ถามผ่านช่องทางใดก็ได้</span><span class="en">The user asks on any channel</span></h3>
+        <p><span class="th">Web / LINE / Discord / OpenClaw / CLI → FastAPI → runtime ตัวเดียวกัน</span>
+           <span class="en">Web / LINE / Discord / OpenClaw / CLI → FastAPI → the same runtime.</span></p>
+      </div>
+      <div class="step">
+        <h3><span class="th">Agent วิเคราะห์: intent + _rewrite คำถาม</span><span class="en">The agent analyzes: intent + query rewrite</span></h3>
+        <p><span class="th">ถ้าเป็นคำถามกฎหมาย → รวม history ให้เป็นคำถามสมบูรณ์ ถ้าคุยทั่วไป → ตอบสุภาพไม่ต้องค้น</span>
+           <span class="en">Legal question → merge history into a complete query; small talk → polite reply with no search.</span></p>
+      </div>
+      <div class="step">
+        <h3><span class="th">Hybrid retrieval + ให้คะแนนเอกสาร</span><span class="en">Hybrid retrieval + document grading</span></h3>
+        <p><span class="th">Vector + BM25 + Weighted RRF → LLM ให้คะแนนความเกี่ยว ไม่ผ่านก็ตอบว่าไม่พบ</span>
+           <span class="en">Vector + BM25 + weighted RRF → the LLM scores relevance; failing docs lead to an honest “not found.”</span></p>
+      </div>
+      <div class="step">
+        <h3><span class="th">สร้างคำตอบ + อ้างอิง</span><span class="en">Generate + cite</span></h3>
+        <p><span class="th">Expert Legal Prompt: ยก quote → “สรุป:” ฟันธง → ชื่อกฎหมาย + มาตรา + ลิงก์เอกสารต้นทาง พร้อมบันทึก Firestore/BigQuery</span>
+           <span class="en">Expert Legal Prompt: quote → decisive “summary:” → law name + section + source link, logged to Firestore/BigQuery.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CH8: OUTCOMES ============ -->
+  <section id="ch8" class="alt">
+    <div class="kicker"><span class="th">บทที่ 8</span><span class="en">Chapter 8</span></div>
+    <h2><span class="th">ผลลัพธ์ที่ได้ และแผนต่อยอด</span><span class="en">Outcomes and what comes next</span></h2>
+
+    <div class="grid4">
+      <div class="stat">
+        <div class="big">5</div>
+        <div class="lbl"><span class="th">ช่องทางแชท ใช้ agent เดียวกัน</span><span class="en">chat channels on one agent</span></div>
+      </div>
+      <div class="stat">
+        <div class="big">4</div>
+        <div class="lbl"><span class="th">LLM ใน failover chain ไม่มี downtime</span><span class="en">LLMs in the failover chain, zero downtime</span></div>
+      </div>
+      <div class="stat">
+        <div class="big">0.7 / 0.3</div>
+        <div class="lbl"><span class="th">น้ำหนัก RRF vector / keyword ปรับได้ผ่าน env</span><span class="en">RRF vector / keyword weights, env-tunable</span></div>
+      </div>
+      <div class="stat">
+        <div class="big">1×</div>
+        <div class="lbl"><span class="th">ต่อสัปดาห์ — crawler อัปเดตกฎหมายใหม่อัตโนมัติ</span><span class="en">per week — crawler refreshes the law automatically</span></div>
+      </div>
+    </div>
+
+    <ul class="clean" style="margin-top:32px">
+      <li><span class="th">ตอบคำถามกฎหมายไทยแบบหลายเทิร์น พร้อมอ้างอิงมาตราที่ <strong>ตรวจสอบย้อนกลับได้จริง</strong></span>
+          <span class="en">Multi-turn Thai legal answers with citations that are <strong>genuinely verifiable</strong>.</span></li>
+      <li><span class="th">ความพร้อมใช้งานสูงจาก failover chain — ผู้ใช้ไม่เคยเห็น error จาก quota หมด</span>
+          <span class="en">High availability from the failover chain — users never see a quota-exhaustion error.</span></li>
+      <li><span class="th">ต้นทุนควบคุมได้: free-tier LLM เป็นหลัก + เลือก vector store ตามงบประมาณ</span>
+          <span class="en">Controllable cost: mostly free-tier LLMs + a vector store chosen to fit the budget.</span></li>
+      <li><span class="th">ฐานกฎหมายสดใหม่เสมอด้วย crawler ราชกิจจานุเบกษาอัตโนมัติ</span>
+          <span class="en">A legal corpus that stays fresh via the automated Ratchakitcha crawler.</span></li>
+    </ul>
+
+    <div class="callout" style="margin-top:32px">
+      <strong><span class="th">🚀 แผนต่อยอด:</span><span class="en">🚀 Next steps:</span></strong>
+      <span class="th">ประเมิน accuracy เชิงระบบด้วย dataset WangchanX-Legal-ThaiCCL-RAG · ขยายช่องทาง Telegram/WhatsApp ผ่าน OpenClaw · ยกระดับ reranking ด้วย cross-encoder เฉพาะกฎหมายไทย · Dashboard วิเคราะห์คำถามยอดนิยมจาก BigQuery เพื่อหาช่องว่างฐานกฎหมาย</span>
+      <span class="en">Systematic accuracy evaluation on the WangchanX-Legal-ThaiCCL-RAG dataset · expand to Telegram/WhatsApp via OpenClaw · cross-encoder reranking tuned for Thai law · a BigQuery dashboard of top questions to expose gaps in the corpus.</span>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    <span class="th">Thai Legal RAG Chatbot — แชทบอทกฎหมายไทยที่ <strong>ค้นก่อนตอบ อ้างอิงได้จริง ไม่เดา</strong><br>
+    รันบน Google Cloud Run · โค้ด: LangGraph + FastAPI + PyThaiNLP · ข้อมูล: Open Law Data Thailand</span>
+    <span class="en">Thai Legal RAG Chatbot — a legal chatbot that <strong>retrieves before answering, cites real statutes, and never guesses</strong><br>
+    Running on Google Cloud Run · Built with LangGraph + FastAPI + PyThaiNLP · Data: Open Law Data Thailand</span>
+  </p>
+</footer>
+
+<script>
+  const ROOT = document.documentElement;
+  const btnTH = document.getElementById('btn-th');
+  const btnEN = document.getElementById('btn-en');
+
+  function setLang(lang){
+    ROOT.setAttribute('data-lang', lang);
+    ROOT.setAttribute('lang', lang === 'en' ? 'en' : 'th');
+    btnTH.classList.toggle('active', lang === 'th');
+    btnEN.classList.toggle('active', lang === 'en');
+    try{ localStorage.setItem('pres_lang', lang); }catch(e){}
+  }
+
+  // restore saved preference
+  try{
+    const saved = localStorage.getItem('pres_lang');
+    if(saved === 'en' || saved === 'th'){ setLang(saved); }
+  }catch(e){}
+
+  // scroll progress bar
+  const bar = document.getElementById('progress');
+  window.addEventListener('scroll', function(){
+    const h = document.documentElement;
+    const max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+  }, {passive:true});
+</script>
+</body>
+</html>
