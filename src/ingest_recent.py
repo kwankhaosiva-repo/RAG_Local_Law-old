@@ -5,7 +5,6 @@ import re
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 import config
 from thai_law_splitter import split_law_chunks

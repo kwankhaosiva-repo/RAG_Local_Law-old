@@ -4,7 +4,7 @@ import re
 import config
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 from tqdm import tqdm
 from huggingface_hub import snapshot_download
 from thai_law_splitter import split_law_chunks

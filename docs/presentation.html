@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <title>Thai Legal RAG Chatbot — Presentation</title>
 <style>
   :root{
@@ -23,7 +26,7 @@
   html[data-lang="th"] .en{display:none !important}
   html[data-lang="en"] .th{display:none !important}
   body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Noto Sans Thai","Leelawadee UI","Thonburi",sans-serif;
+    font-family:"Inter","Anuphan",system-ui,-apple-system,"Segoe UI",sans-serif;
     color:var(--ink);
     background:var(--bg);
     line-height:1.75;
@@ -184,7 +187,7 @@
 
 <header>
   <div class="header-in">
-    <div class="brand">⚖️ Thai Legal <span>RAG</span> Chatbot</div>
+    <div class="brand">Thai Legal <span>RAG</span> Chatbot</div>
     <div class="lang-toggle" role="group" aria-label="Language">
       <button id="btn-th" class="active" onclick="setLang('th')">ไทย</button>
       <button id="btn-en" onclick="setLang('en')">EN</button>
@@ -256,8 +259,8 @@
           <span class="en"><strong>Classic keyword search falls flat</strong> — Thai has no word spacing, and legal vocabulary differs sharply from how people actually ask.</span></li>
     </ul>
     <div class="callout">
-      <span class="th">🎯 <strong>เป้าหมายของโปรเจกต์:</strong> แชทบอทที่ <strong>ค้นก่อนตอบเสมอ</strong> อ้างอิงกลับไปถึงมาตราจริงได้ และกล้าตอบว่า “ไม่พบข้อมูล” เมื่อฐานกฎหมายไม่มีคำตอบ — ความน่าเชื่อถือสำคัญกว่าความฉลาด</span>
-      <span class="en">🎯 <strong>The goal:</strong> a chatbot that <strong>always retrieves before answering</strong>, cites back to real statutes, and dares to say “not found” when the corpus has no answer — trustworthiness over cleverness.</span>
+      <span class="th"><strong>เป้าหมายของโปรเจกต์:</strong> แชทบอทที่ <strong>ค้นก่อนตอบเสมอ</strong> อ้างอิงกลับไปถึงมาตราจริงได้ และกล้าตอบว่า “ไม่พบข้อมูล” เมื่อฐานกฎหมายไม่มีคำตอบ — ความน่าเชื่อถือสำคัญกว่าความฉลาด</span>
+      <span class="en"><strong>The goal:</strong> a chatbot that <strong>always retrieves before answering</strong>, cites back to real statutes, and dares to say “not found” when the corpus has no answer — trustworthiness over cleverness.</span>
     </div>
   </section>
 
@@ -360,29 +363,29 @@
     </p>
     <div class="cards two">
       <div class="card">
-        <h3><span class="th">❌ Fine-tune โมเดลเอง</span><span class="en">❌ Fine-tune our own model</span></h3>
+        <h3><span class="th">Fine-tune โมเดลเอง</span><span class="en">Fine-tune our own model</span></h3>
         <p><span class="th">กฎหมายแก้ทุกสัปดาห์ → fine-tune ใหม่ทุกครั้งที่มีการแก้ไข ต้นทุนสูง ต้องมี GPU และยัง hallucinate ได้อยู่ดีเมื่อไม่มีข้อมูลใน weight</span>
            <span class="en">The law changes weekly → retrain on every amendment: expensive, GPU-bound, and it still hallucinates when the answer is not in the weights.</span></p>
       </div>
       <div class="card">
-        <h3><span class="th">❌ Chatbot ตรงๆ ไม่มี retrieval</span><span class="en">❌ Plain LLM chatbot, no retrieval</span></h3>
+        <h3><span class="th">Chatbot ตรงๆ ไม่มี retrieval</span><span class="en">Plain LLM chatbot, no retrieval</span></h3>
         <p><span class="th">ตอบเร็วและง่าย แต่ไม่มีทางอ้างอิงมาตราจริงได้ และไม่มีทาง “ไม่รู้” อย่างซื่อสัตย์</span>
            <span class="en">Fast and easy, but it can never cite a real statute, nor honestly admit when it does not know.</span></p>
       </div>
       <div class="card">
-        <h3><span class="th">✅ RAG — ค้นก่อนตอบเสมอ</span><span class="en">✅ RAG — always retrieve first</span></h3>
+        <h3><span class="th">RAG — ค้นก่อนตอบเสมอ</span><span class="en">RAG — always retrieve first</span></h3>
         <p><span class="th">อัปเดตข้อมูลทันทีแค่ ingest ใหม่ ไม่ต้อง train, คำตอบมีที่มาตรวจสอบได้, ควบคุมต้นทุนได้ด้วย free-tier LLM</span>
            <span class="en">Refresh data by re-ingesting — no training. Answers have a traceable source, and cost stays low on free-tier LLMs.</span></p>
       </div>
       <div class="card">
-        <h3><span class="th">🔒 คุมเข้มด้วยเกรดก่อนตอบ</span><span class="en">🔒 Tightened with pre-answer grading</span></h3>
+        <h3><span class="th">คุมเข้มด้วยเกรดก่อนตอบ</span><span class="en">Tightened with pre-answer grading</span></h3>
         <p><span class="th">RAG ธรรมดาอาจยังดึงเอกสารผิด → จึง <strong>ให้ LLM ให้คะแนนความเกี่ยวก่อนตอบทุกครั้ง</strong> ถ้าไม่ผ่าน ตอบว่าไม่พบ + แนะนำกฎหมายที่น่าจะเกี่ยว</span>
            <span class="en">Vanilla RAG can still retrieve the wrong docs → so the <strong>LLM grades relevance before every answer</strong>; if it fails, the bot says “not found” and points to likely-relevant laws.</span></p>
       </div>
     </div>
     <div class="callout">
-      <span class="th">💡 <strong>หลักคิด:</strong> ฐานความรู้แยกจากตัวโมเดล — โมเดลเป็นแค่ “นักกฎหมายที่อ่านเอกสารให้” แต่เอกสารคือความจริง และเอกสารอัปเดตได้โดยไม่แตะโค้ด</span>
-      <span class="en">💡 <strong>Principle:</strong> separate the knowledge base from the model — the model is merely “a lawyer reading the documents,” the documents are the truth, and documents can be refreshed without touching code.</span>
+      <span class="th"><strong>หลักคิด:</strong> ฐานความรู้แยกจากตัวโมเดล — โมเดลเป็นแค่ “นักกฎหมายที่อ่านเอกสารให้” แต่เอกสารคือความจริง และเอกสารอัปเดตได้โดยไม่แตะโค้ด</span>
+      <span class="en"><strong>Principle:</strong> separate the knowledge base from the model — the model is merely “a lawyer reading the documents,” the documents are the truth, and documents can be refreshed without touching code.</span>
     </div>
   </section>
 
@@ -473,11 +476,11 @@
 
     <div class="diagram">
       <div class="d-row">
-        <span class="d-node">🌐 Web</span>
-        <span class="d-node">💬 LINE</span>
-        <span class="d-node">🎮 Discord</span>
-        <span class="d-node">🦾 OpenClaw</span>
-        <span class="d-node">⌨️ CLI</span>
+        <span class="d-node">Web</span>
+        <span class="d-node">LINE</span>
+        <span class="d-node">Discord</span>
+        <span class="d-node">OpenClaw</span>
+        <span class="d-node">CLI</span>
       </div>
       <div class="d-arrow">↓</div>
       <div class="d-node">FastAPI <small>Google Cloud Run · Asia Southeast</small></div>
@@ -500,7 +503,7 @@
       <div class="d-arrow">↓</div>
       <div class="d-node accent">LLM Failover Chain <small>Groq → UNOROUTER → Mistral → Ollama</small></div>
       <div class="d-arrow">↓</div>
-      <div class="d-node primary">✅ คำตอบ + อ้างอิงมาตรา + ลิงก์เอกสารต้นทาง<small>Answer + statute citation + source document link</small></div>
+      <div class="d-node primary">คำตอบ + อ้างอิงมาตรา + ลิงก์เอกสารต้นทาง<small>Answer + statute citation + source document link</small></div>
       <div class="d-side">
         <span class="th">ระบบเสริม: Firestore (ประวัติแชท) · BigQuery (analytics คำถาม) · GCS (chroma snapshot) · Ratchakitcha Crawler (อัปเดตกฎหมายใหม่ทุกสัปดาห์)</span>
         <span class="en">Side systems: Firestore (chat history) · BigQuery (query analytics) · GCS (chroma snapshot) · Ratchakitcha Crawler (fresh law every week)</span>
@@ -509,7 +512,7 @@
 
     <div class="cards two" style="margin-top:32px">
       <div class="card">
-        <h3><span class="th">🧠 4 ขั้นของ Agent</span><span class="en">🧠 The agent’s 4 steps</span></h3>
+        <h3><span class="th">4 ขั้นของ Agent</span><span class="en">The agent’s 4 steps</span></h3>
         <ul class="clean" style="margin-bottom:0">
           <li><span class="th"><strong>Route Intent:</strong> แยก “คำถามกฎหมาย” ให้ค้นฐานข้อมูล vs “คุยทั่วไป” ตอบสุภาพไม่ต้องค้น</span>
               <span class="en"><strong>Route Intent:</strong> splits “legal questions” (→ search the corpus) from “small talk” (→ polite reply, no search).</span></li>
@@ -522,7 +525,7 @@
         </ul>
       </div>
       <div class="card">
-        <h3><span class="th">🛡️ ตัวกรองความปลอดภัย 3 ชั้น</span><span class="en">🛡️ Three layers of safety</span></h3>
+        <h3><span class="th">ตัวกรองความปลอดภัย 3 ชั้น</span><span class="en">Three layers of safety</span></h3>
         <ul class="clean" style="margin-bottom:0">
           <li><span class="th"><strong>Prompt:</strong> ห้ามอ้างมาตราที่ไม่อยู่ใน Context — ถ้าไม่พอให้บอกตรงๆ ว่าข้อมูลไม่เพียงพอ</span>
               <span class="en"><strong>Prompt:</strong> never cite a section absent from the Context — say plainly when evidence is insufficient.</span></li>
@@ -543,7 +546,7 @@
 
     <div class="cards two">
       <div class="card">
-        <h3>🤖 <span class="th">AI / RAG Core</span><span class="en">AI / RAG Core</span></h3>
+        <h3><span class="th">AI / RAG Core</span><span class="en">AI / RAG Core</span></h3>
         <ul class="clean" style="margin-bottom:0">
           <li><strong>LangGraph</strong> — <span class="th">agent (StateGraph, memory, doc grading)</span><span class="en">agent (StateGraph, memory, doc grading)</span></li>
           <li><strong>LangChain</strong> — <span class="th">retrieval pipeline, prompts, parsers</span><span class="en">retrieval pipeline, prompts, parsers</span></li>
@@ -552,7 +555,7 @@
         </ul>
       </div>
       <div class="card">
-        <h3>🗄️ <span class="th">ข้อมูลและที่เก็บ</span><span class="en">Data &amp; Storage</span></h3>
+        <h3><span class="th">ข้อมูลและที่เก็บ</span><span class="en">Data &amp; Storage</span></h3>
         <ul class="clean" style="margin-bottom:0">
           <li><strong>Pinecone / ChromaDB</strong> — <span class="th">vector store สลับด้วย <code>VECTOR_STORE</code></span><span class="en">vector store, switched via <code>VECTOR_STORE</code></span></li>
           <li><strong>Firestore</strong> — <span class="th">ประวัติแชท (rag-law-db)</span><span class="en">chat history (rag-law-db)</span></li>
@@ -562,7 +565,7 @@
         </ul>
       </div>
       <div class="card">
-        <h3>📱 <span class="th">แอปและช่องทาง</span><span class="en">App &amp; Channels</span></h3>
+        <h3><span class="th">แอปและช่องทาง</span><span class="en">App &amp; Channels</span></h3>
         <ul class="clean" style="margin-bottom:0">
           <li><strong>FastAPI + Vanilla JS</strong> — <span class="th">Web UI ปรับแต่งได้ (ธีม/ฟอนต์/มาสคอต/ภาษา TH-EN)</span><span class="en">customizable Web UI (theme/fonts/mascot/TH-EN language)</span></li>
           <li><strong>LINE Messaging API</strong> — <span class="th">webhook + Reply API + Push fallback</span><span class="en">webhook + Reply API + Push fallback</span></li>
@@ -572,7 +575,7 @@
         </ul>
       </div>
       <div class="card">
-        <h3>☁️ <span class="th">โครงสร้างพื้นฐาน</span><span class="en">Infrastructure</span></h3>
+        <h3><span class="th">โครงสร้างพื้นฐาน</span><span class="en">Infrastructure</span></h3>
         <ul class="clean" style="margin-bottom:0">
           <li><strong>Google Cloud Run</strong> — <span class="th">serverless deploy (auto-scaling)</span><span class="en">serverless deploy (auto-scaling)</span></li>
           <li><strong>Docker + gcloud CLI</strong> — <span class="th">containerization และ CI/deploy</span><span class="en">containerization and CI/deploy</span></li>
@@ -588,7 +591,7 @@
     <div class="kicker"><span class="th">บทที่ 7</span><span class="en">Chapter 7</span></div>
     <h2><span class="th">Workflow — จากกฎหมายกระดาษ สู่คำตอบแชท</span><span class="en">Workflow — from paper law to a chat answer</span></h2>
 
-    <h3 style="margin-top:28px">📦 <span class="th">เส้นทางข้อมูล (ทำอัตโนมัติต่อเนื่อง)</span><span class="en">Data pipeline (runs continuously)</span></h3>
+    <h3 style="margin-top:28px"><span class="th">เส้นทางข้อมูล (ทำอัตโนมัติต่อเนื่อง)</span><span class="en">Data pipeline (runs continuously)</span></h3>
     <div class="steps">
       <div class="step">
         <h3><span class="th">Crawler ราชกิจจานุเบกษา ทุกสัปดาห์</span><span class="en">Ratchakitcha crawler, every week</span></h3>
@@ -612,7 +615,7 @@
       </div>
     </div>
 
-    <h3 style="margin-top:40px">💬 <span class="th">เส้นทางคำถาม (ทุกเทิร์น)</span><span class="en">Question path (every turn)</span></h3>
+    <h3 style="margin-top:40px"><span class="th">เส้นทางคำถาม (ทุกเทิร์น)</span><span class="en">Question path (every turn)</span></h3>
     <div class="steps">
       <div class="step">
         <h3><span class="th">ผู้ใช้ถามผ่านช่องทางใดก็ได้</span><span class="en">The user asks on any channel</span></h3>
@@ -673,7 +676,7 @@
     </ul>
 
     <div class="callout" style="margin-top:32px">
-      <strong><span class="th">🚀 แผนต่อยอด:</span><span class="en">🚀 Next steps:</span></strong>
+      <strong><span class="th">แผนต่อยอด:</span><span class="en">Next steps:</span></strong>
       <span class="th">ประเมิน accuracy เชิงระบบด้วย dataset WangchanX-Legal-ThaiCCL-RAG · ขยายช่องทาง Telegram/WhatsApp ผ่าน OpenClaw · ยกระดับ reranking ด้วย cross-encoder เฉพาะกฎหมายไทย · Dashboard วิเคราะห์คำถามยอดนิยมจาก BigQuery เพื่อหาช่องว่างฐานกฎหมาย</span>
       <span class="en">Systematic accuracy evaluation on the WangchanX-Legal-ThaiCCL-RAG dataset · expand to Telegram/WhatsApp via OpenClaw · cross-encoder reranking tuned for Thai law · a BigQuery dashboard of top questions to expose gaps in the corpus.</span>
     </div>
