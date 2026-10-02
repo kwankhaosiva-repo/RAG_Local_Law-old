@@ -818,8 +818,12 @@ function escapeHtml(s) {
 function avatarEl(role) {
   const a = document.createElement("div");
   a.className = "avatar";
-  if (role === "bot") { a.dataset.avatar = "bot"; a.textContent = MASCOTS[settings.mascot] || "🦉"; }
-  else a.textContent = "🙋";
+  if (role === "bot") {
+    a.dataset.avatar = "bot";
+    paintAvatar(a, settings.avatar, settings.mascot);
+  } else {
+    a.textContent = "🙋";
+  }
   return a;
 }
 

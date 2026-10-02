@@ -11,6 +11,7 @@ warnings.filterwarnings("ignore")
 
 import os
 import sys
+import re
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -160,11 +161,22 @@ class LegalAgent:
         return "\n".join(lines)
 
     def _route_intent(self, state):
-        question = state["messages"][-1].content
-        # เทิร์นแรกของ session → legal ทันที (ประหยัด 1 LLM call ~30-50s บนโมเดลช้า)
-        # ผู้ใช้เปิดแชทด้วยคำถามกฎหมายเป็นส่วนใหญ่; small talk หลังเทิร์นแรกยังจับได้ปกติ
+        question = (state["messages"][-1].content or "").strip()
+
+        # 1. Fast Pattern Check: ข้อความทักทาย / ขอบคุณ / คุยเล่น สั้นๆ
+        # ตอบได้ทันทีโดยไม่ต้องเรียก LLM routing และไม่ต้องเสียเวลาค้นหาฐานข้อมูลกฎหมาย
+        greeting_pattern = re.compile(
+            r"^(สวัสดี(?:ครับ|ค่ะ|จ้า)?|หวัดดี(?:ครับ|ค่ะ)?|ดีครับ|ดีค่ะ|hello|hi|hey|"
+            r"ขอบคุณ(?:ครับ|ค่ะ)?|แต๊งกิ้ว|บาย|ลาก่อน|สบายดีไหม|คุณคือใคร|ทำอะไรได้บ้าง)[\s\!\?\.\~]*$",
+            re.IGNORECASE
+        )
+        if greeting_pattern.match(question):
+            return {"intent": "chat"}
+
+        # เทิร์นแรกของ session (ถ้าไม่ใช่คำทักทายข้างบน) → ให้เป็น legal ทันที
         if len(state.get("messages") or []) <= 1:
             return {"intent": "legal"}
+
         try:
             intent_raw = self._get_intent_chain().invoke({
                 "conversation": self._conversation_text(state),
@@ -238,10 +250,22 @@ class LegalAgent:
         return {"enough_context": True}
 
     def _small_talk(self, state):
-        question = state["messages"][-1].content
-        conversation = self._conversation_text(state)
-        reply = self.chat_llm.invoke(
-            f"""คุณคือผู้ช่วยตอบคำถามกฎหมายไทย กำลังคุยกับผู้ใช้แบบสุภาพ มิตรภาพ ตอบสั้นกระชับ (1-3 ประโยค)
+        question = (state["messages"][-1].content or "").strip()
+        default_greeting = "สวัสดีครับ 🙏 ผมคือที่ปรึกษากฎหมายประจำตัวคุณ ยินดีช่วยเหลือครับ สามารถพิมพ์สอบถามประเด็นกฎหมาย สิทธิ หน้าที่ หรือระบุชื่อ พ.ร.บ. และเลขมาตราที่ต้องการได้เลยครับ"
+        
+        # ถ้าเป็นคำทักทายทั่วไป ตอบข้อความต้อนรับได้ทันที เร็วมากและไม่พึ่งพา LLM
+        greetings = ("สวัสดี", "หวัดดี", "ดีครับ", "ดีค่ะ", "hello", "hi", "hey")
+        if any(question.lower().startswith(g) for g in greetings) and len(question) <= 20:
+            return {
+                "generation": default_greeting,
+                "sources": [],
+                "messages": [AIMessage(content=default_greeting)],
+            }
+
+        try:
+            conversation = self._conversation_text(state)
+            reply = self.chat_llm.invoke(
+                f"""คุณคือผู้ช่วยตอบคำถามกฎหมายไทย กำลังคุยกับผู้ใช้แบบสุภาพ มิตรภาพ ตอบสั้นกระชับ (1-3 ประโยค)
 หากผู้ใช้ยังไม่ได้ถามเรื่องกฎหมาย ให้ต้อนรับและชวนให้ถามคำถามกฎหมายที่สงสัย
 
 บทสนทนา:
@@ -250,11 +274,15 @@ class LegalAgent:
 ข้อความผู้ใช้: "{question}"
 
 ข้อความตอบ:"""
-        )
+            )
+            content = reply.content
+        except Exception:
+            content = default_greeting
+
         return {
-            "generation": reply.content,
+            "generation": content,
             "sources": [],
-            "messages": [AIMessage(content=reply.content)],
+            "messages": [AIMessage(content=content)],
         }
 
     def _generate(self, state):

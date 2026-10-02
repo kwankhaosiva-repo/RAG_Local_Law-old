@@ -103,6 +103,11 @@ def wait_ready(timeout: float = 300.0) -> None:
     """Block จนกว่า DB พร้อม (หรือ raise ถ้า sync fail / timeout)"""
     if _ready.is_set():
         return
+    # ถ้ายังไม่ได้สั่ง start (เช่น รันผ่าน CLI หรือ test script) ให้สั่งเริ่มทันที
+    if not _started:
+        start_background_sync()
+    if _ready.is_set():
+        return
     start = time.time()
     while not _ready.wait(timeout=min(1.0, timeout)):
         if _error:

@@ -42,13 +42,15 @@ PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
 
 def signature_ok(body_bytes: bytes, signature: str) -> bool:
-    """ตรวจ X-Line-Signature: HMAC-SHA256 ของ raw body ด้วย channel secret"""
+    """ตรวจ X-Line-Signature: HMAC-SHA256 แบบ Base64 ของ raw body ด้วย channel secret"""
     if not LINE_CHANNEL_SECRET:
         return False
+    import base64
     digest = hmac.new(
-        LINE_CHANNEL_SECRET.encode(), body_bytes, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(digest, signature or "")
+        LINE_CHANNEL_SECRET.encode("utf-8"), body_bytes, hashlib.sha256
+    ).digest()
+    computed = base64.b64encode(digest).decode("utf-8")
+    return hmac.compare_digest(computed, signature or "")
 
 
 def split_message(text: str) -> list[str]:
