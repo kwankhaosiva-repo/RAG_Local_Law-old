@@ -74,7 +74,10 @@ Provider ที่ตอบ deterministic error (invalid key / model ไม่�
 
 Migration chroma → Pinecone: `python scripts/migrate_chroma_to_pinecone.py` (มี `--dry-run`, dimension 384, metric cosine)
 
-⚠️ **Pinecone Starter (free) มีโควตารายเดือน:** Write Units 2M/เดือน · Read Units 1M/เดือน (reset ทุกวันที่ 1) — migration ครั้งเดียวใช้ ~1.5M WU ควรรันต้นเดือน และ upsert ซ้ำด้วย ID เดิม = idempotent ทับข้อมูลเก่าได้เลย (ไม่ต้องลบ index ก่อน — ลบข้อมูลไม่ได้คืนโควตา WU ที่ใช้ไปแล้ว) เช็คเหลือเท่าไรที่ Pinecone Console → Usage
+⚠️ **Pinecone Starter (free) โควตารายเดือน:** Write Units 2M/เดือน · Storage 2GB — เพื่อให้อยู่ในโควต้าฟรีอย่างพอดี (~6.6 แสน vectors / ~1.93 GB) และยังคงความถูกต้องทางกฎหมายสูงสุด:
+- **5-6 ประมวลกฎหมายแม่บท (แพ่งและพาณิชย์, อาญา, วิ.แพ่ง, วิ.อาญา, รัษฎากร, ที่ดิน):** เก็บครบทุกปีตั้งแต่เริ่มตรา (พ.ศ. 2470+ จนถึงปัจจุบัน) ไม่ตัดทิ้ง
+- **กฎหมายเฉพาะทางอื่นๆ (พ.ร.บ./พ.ร.ฎ./กฎกระทรวง):** คัดกรองตั้งแต่ปี พ.ศ. 2538 ขึ้นไป (ครอบคลุมกฎหมายร่วมสมัยทั้งหมด)
+- **กฎหมายใหม่ล่าสุด (`recent_law`):** ประกาศราชกิจจานุเบกษารายเดือนปี 2568 ทั้งหมด
 
 ### 5. Data Ingestion (การนำเข้าข้อมูล)
 *   **Thai Law Section Splitter (`src/thai_law_splitter.py`):** จับหัวมาตราครบทุกรูปแบบ (`มาตรา 5`, `มาตราที่ 7/1`, `มาตรา ๓๙` เลขไทย, `ข้อที่ 5`, ทวิ/ตรี/จัตวา) ไม่ตัดกลางคำ — chunk ต่อเนื่องมี header "ส่วนของ: มาตรา X (ส่วนที่ n/m)" ตรวจด้วย `python src/test_section_splitter.py`

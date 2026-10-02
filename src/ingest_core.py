@@ -29,25 +29,34 @@ def ingest_core_law():
     
     dataset_path = os.path.join(config.DATASETS_DIR, "ocs-krisdika_manual")
     
+    # 5-6 ประมวลกฎหมายแม่บทหลักที่ต้องเก็บครบทุกปี (ตั้งแต่ พ.ศ. 2470+ ถึงปัจจุบัน)
+    MAJOR_CODES = [
+        "ประมวลกฎหมายแพ่งและพาณิชย์",
+        "ประมวลกฎหมายอาญา",
+        "ประมวลกฎหมายวิธีพิจารณาความแพ่ง",
+        "ประมวลกฎหมายวิธีพิจารณาความอาญา",
+        "ประมวลรัษฎากร",
+        "ประมวลกฎหมายที่ดิน",
+    ]
+
+    def is_major_code(title_text):
+        return any(code in title_text for code in MAJOR_CODES)
+
     all_files = []
     if os.path.exists(dataset_path):
         for root, dirs, files in os.walk(dataset_path):
             for f in files:
                 if f.endswith(".jsonl"):
-                    # --- FILTER YEAR (2500+) ---
-                    # ดึงปีจากชื่อโฟลเดอร์ เช่น data/2562/...
                     year_match = re.search(r'(\d{4})', root)
                     if year_match:
                         year = int(year_match.group(1))
-                        # แปลง ค.ศ. เป็น พ.ศ. โดยประมาณถ้าเจอตัวเลขน้อยกว่า 2400
                         actual_be_year = year if year > 2400 else year + 543
-                        if actual_be_year >= 2500:
-                            all_files.append(os.path.join(root, f))
+                        all_files.append((os.path.join(root, f), actual_be_year))
     
     documents = []
-    print(f"Processing {len(all_files)} filtered files...")
+    print(f"Scanning {len(all_files)} dataset files with Hybrid Filter (5 Major Codes all years + Others >= 2538)...")
     
-    for file_path in tqdm(all_files):
+    for file_path, actual_be_year in tqdm(all_files):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -57,6 +66,11 @@ def ingest_core_law():
                     if not data.get('is_latest', False): continue 
                     
                     title = data.get('title', 'Unknown')
+                    
+                    # กฎหมายแม่บทเก็บทุกปี / กฎหมายอื่นเอาตั้งแต่ พ.ศ. 2538 ขึ้นไป
+                    if actual_be_year < 2538 and not is_major_code(title):
+                        continue
+
                     hierarchy_level, unit_type = get_hierarchy_metadata(title)
                     sections = data.get('sections', [])
                     publish_date = data.get('publish_date', '')
