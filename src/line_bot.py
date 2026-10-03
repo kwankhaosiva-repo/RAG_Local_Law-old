@@ -43,14 +43,19 @@ PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
 def signature_ok(body_bytes: bytes, signature: str) -> bool:
     """ตรวจ X-Line-Signature: HMAC-SHA256 แบบ Base64 ของ raw body ด้วย channel secret"""
-    if not LINE_CHANNEL_SECRET:
+    secret = (LINE_CHANNEL_SECRET or "").strip()
+    if not secret:
         return False
     import base64
+    sig = (signature or "").strip()
     digest = hmac.new(
-        LINE_CHANNEL_SECRET.encode("utf-8"), body_bytes, hashlib.sha256
+        secret.encode("utf-8"), body_bytes, hashlib.sha256
     ).digest()
     computed = base64.b64encode(digest).decode("utf-8")
-    return hmac.compare_digest(computed, signature or "")
+    is_valid = hmac.compare_digest(computed, sig)
+    if not is_valid:
+        print(f"[line_bot] Signature mismatch! header_len={len(sig)}, computed_len={len(computed)}, secret_len={len(secret)}")
+    return is_valid
 
 
 def split_message(text: str) -> list[str]:
