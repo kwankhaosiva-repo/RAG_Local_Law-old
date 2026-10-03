@@ -43,69 +43,95 @@ def _get_client():
     return _client
 
 
+MAX_RECENT_TURNS = 10  # rolling window 10 เทิร์นล่าสุดเพื่อประหยัดพื้นที่และ context limit
+
+
+def _clean_sources(sources: list | None) -> list[dict]:
+    """บีบอัด sources เก็บเฉพาะ metadata จำเป็น ประหยัดพื้นที่จัดเก็บ"""
+    if not sources:
+        return []
+    cleaned = []
+    for s in sources[:3]:
+        cleaned.append({
+            "title": str(s.get("title", ""))[:80],
+            "section": str(s.get("section", ""))[:40],
+            "url": str(s.get("source_url", ""))[:120],
+        })
+    return cleaned
+
+
 def save_turn(
     session_id: str,
     user_message: str,
     assistant_message: str,
     sources: list | None = None,
 ) -> None:
-    """บันทึก 1 เทิร์นของบทสนทนา (1 document ต่อเทิร์น ใต้ collection ของ session)"""
+    """บันทึก 1 เทิร์นลงใน session document เดียว (1 Write Operation = ประหยัดที่สุด)"""
     client = _get_client()
     if client is None:
         return
-    ref = (
-        client.collection(COLLECTION)
-        .document(session_id)
-        .collection("turns")
-        .document()
-    )
-    ref.set(
-        {
-            "user_message": user_message,
-            "assistant_message": assistant_message,
-            "sources": sources or [],
+    try:
+        doc_ref = client.collection(COLLECTION).document(session_id)
+        snap = doc_ref.get()
+        data = snap.to_dict() if snap.exists else {}
+
+        turns = data.get("turns", [])
+        new_turn = {
+            "user": user_message.strip(),
+            "assistant": assistant_message.strip(),
+            "sources": _clean_sources(sources),
             "created_at": time.time(),
-            "created_at_iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
-    )
+        turns.append(new_turn)
+
+        # บีบอัดเก็บเฉพาะ Rolling Window ล่าสุด ป้องกันพื้นที่บวม
+        if len(turns) > MAX_RECENT_TURNS:
+            turns = turns[-MAX_RECENT_TURNS:]
+
+        doc_ref.set(
+            {
+                "session_id": session_id,
+                "turns": turns,
+                "turn_count": (data.get("turn_count", 0) + 1),
+                "updated_at": time.time(),
+                "updated_at_iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            },
+            merge=True,
+        )
+    except Exception as e:
+        print(f"[firestore_db] save_turn error: {e}")
 
 
-def get_history(session_id: str, limit: int = 50) -> list[dict]:
-    """โหลดประวัติแชทของ session (เก่าสุดก่อน)"""
+def get_history(session_id: str, limit: int = 10) -> list[dict]:
+    """โหลดประวัติแชทของ session (อ่านเพียง 1 document เท่านั้น = 1 Read Cost)"""
     client = _get_client()
     if client is None:
         return []
-    docs = (
-        client.collection(COLLECTION)
-        .document(session_id)
-        .collection("turns")
-        .order_by("created_at")
-        .limit(limit)
-        .stream()
-    )
-    return [d.to_dict() for d in docs]
+    try:
+        doc_ref = client.collection(COLLECTION).document(session_id)
+        snap = doc_ref.get()
+        if not snap.exists:
+            return []
+        data = snap.to_dict() or {}
+        turns = data.get("turns", [])
+        return turns[-limit:]
+    except Exception as e:
+        print(f"[firestore_db] get_history error: {e}")
+        return []
 
 
 def reset_session(session_id: str) -> None:
-    """ลบประวัติทั้งหมดของ session (ตอน user กด reset)"""
+    """ลบประวัติ session ใน 1 operation (1 Delete Cost)"""
     client = _get_client()
     if client is None:
         return
-    turns = (
-        client.collection(COLLECTION)
-        .document(session_id)
-        .collection("turns")
-        .stream()
-    )
-    batch = client.batch()
-    for i, doc in enumerate(turns):
-        batch.delete(doc.reference)
-        if (i + 1) % 400 == 0:
-            batch.commit()
-            batch = client.batch()
-    batch.commit()
+    try:
+        client.collection(COLLECTION).document(session_id).delete()
+    except Exception as e:
+        print(f"[firestore_db] reset_session error: {e}")
 
 
 def is_available() -> bool:
     """สำหรับ /health — แค่เช็คว่า client ใช้ได้ไหม"""
     return _get_client() is not None
+

@@ -105,6 +105,29 @@ def line_api(url: str, payload: dict):
     )
 
 
+def format_answer_for_line(out: dict) -> str:
+    """จัดฟอร์แมตคำตอบสำหรับ LINE พร้อมแนบฐานกฎหมาย/เอกสารอ้างอิงให้ชัดเจนเหมือนหน้าเว็บ"""
+    answer = (out.get("answer") or "").strip()
+    sources = out.get("sources") or []
+    if sources:
+        citations = []
+        for i, s in enumerate(sources[:3], 1):
+            title = (s.get("title") or "").strip()
+            section = (s.get("section") or "").strip()
+            url = (s.get("source_url") or "").strip()
+            if not title and not section:
+                continue
+            item = f"[{i}] {title}" if title else f"[{i}] แหล่งอ้างอิง"
+            if section:
+                item += f" ({section})"
+            if url:
+                item += f"\n    🔗 {url}"
+            citations.append(item)
+        if citations:
+            answer += "\n\n📎 เอกสารอ้างอิง:\n" + "\n".join(citations)
+    return answer
+
+
 def answer_text(session_id: str, text: str) -> str:
     """เรียก agent พร้อมจัดการคำสั่ง /reset และ fallback error"""
     if text.strip() in ("/reset", "/reset@lawbot", "ล้างแชท"):
@@ -114,7 +137,7 @@ def answer_text(session_id: str, text: str) -> str:
     try:
         out = ask(text, session_id)
         print("[line_bot] runtime.ask สำเร็จ")
-        return out["answer"]
+        return format_answer_for_line(out)
     except Exception as e:
         print(f"[line_bot] error: {e}")
         return "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้งครับ"

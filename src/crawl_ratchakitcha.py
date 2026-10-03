@@ -215,15 +215,25 @@ def build_documents(title, publish_date, full_content):
 
 def ingest_documents(documents):
     from langchain_huggingface import HuggingFaceEmbeddings
-    from langchain_chroma import Chroma
 
     embeddings = HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL_NAME)
-    vectorstore = Chroma(
-        collection_name=config.COLLECTION_RECENT,
-        embedding_function=embeddings,
-        persist_directory=config.DB_DIR,
-    )
-    batch_size = 500
+    backend = (config.VECTOR_STORE or "chroma").lower()
+    if backend == "pinecone":
+        from langchain_pinecone import PineconeVectorStore
+        vectorstore = PineconeVectorStore(
+            index_name=config.PINECONE_INDEX,
+            embedding=embeddings,
+            namespace=config.PINECONE_NAMESPACE_RECENT,
+            text_key="text",
+        )
+    else:
+        from langchain_chroma import Chroma
+        vectorstore = Chroma(
+            collection_name=config.COLLECTION_RECENT,
+            embedding_function=embeddings,
+            persist_directory=config.DB_DIR,
+        )
+    batch_size = 200 if backend == "pinecone" else 500
     for i in tqdm(range(0, len(documents), batch_size), desc="Indexing"):
         vectorstore.add_documents(documents=documents[i:i + batch_size])
 
