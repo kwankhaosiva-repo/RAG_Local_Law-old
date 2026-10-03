@@ -16,14 +16,17 @@ import hmac
 import json
 import os
 import sys
+import threading
+import time
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import httpx
 import config
 from runtime import ask, reset
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 line_router = APIRouter(prefix="/line", tags=["line"])
 
@@ -39,6 +42,20 @@ MAX_TEXT = 4900  # LINE จำกัด ~5000 ตัวอักษรต่อ�
 
 REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 PUSH_URL = "https://api.line.me/v2/bot/message/push"
+BOT_INFO_URL = "https://api.line.me/v2/bot/info"
+LOADING_URL = "https://api.line.me/v2/bot/chat/loading/start"
+
+# เตือนตั้งแต่ตอน import — อาการ "webhook 200 แต่บอทเงียบ" เกิดจากค่าเหล่านี้ว่างบ่อยที่สุด
+if not (LINE_CHANNEL_ACCESS_TOKEN or "").strip():
+    print("[line_bot] ⚠️ LINE_CHANNEL_ACCESS_TOKEN ว่าง — รับ webhook ได้แต่ตอบกลับไม่ได้")
+if not (LINE_CHANNEL_SECRET or "").strip():
+    print("[line_bot] ⚠️ LINE_CHANNEL_SECRET ว่าง — ข้ามการตรวจ signature (ไม่ปลอดภัย)")
+
+
+def _token_tail() -> str:
+    """ท้าย token 4 ตัว — ยืนยันว่าโหลด token ตัวไหนโดยไม่เปิดเผยค่าจริง"""
+    t = (LINE_CHANNEL_ACCESS_TOKEN or "").strip()
+    return f"...{t[-4:]}" if len(t) >= 4 else "(ว่าง)"
 
 
 def signature_ok(body_bytes: bytes, signature: str) -> bool:
@@ -93,8 +110,11 @@ def answer_text(session_id: str, text: str) -> str:
     if text.strip() in ("/reset", "/reset@lawbot", "ล้างแชท"):
         reset(session_id)
         return "🔄 เริ่มบทสนทนาใหม่แล้วครับ สอบถามกฎหมายได้เลยครับ"
+    print("[line_bot] เรียก runtime.ask ...")
     try:
-        return ask(text, session_id)["answer"]
+        out = ask(text, session_id)
+        print("[line_bot] runtime.ask สำเร็จ")
+        return out["answer"]
     except Exception as e:
         print(f"[line_bot] error: {e}")
         return "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้งครับ"
@@ -116,32 +136,98 @@ def make_push_payload(user_id: str, text: str) -> dict:
     }
 
 
-def send_reply(reply_token: str, user_id: str, text: str) -> None:
+def send_reply(reply_token: str, user_id: str, text: str) -> bool:
     """ตอบผู้ใช้: ลอง Reply API ก่อน (ฟรี ไม่นับ quota)
-    ถ้า token หมดอายุ/ใช้แล้ว → fallback ไป Push API (นับ quota)
+    ถ้าใช้ไม่ได้ (token หมดอายุ/ถูกใช้แล้ว/401/403) → fallback ไป Push API (นับ quota)
+    คืน True ถ้าส่งสำเร็จอย่างน้อยหนึ่งช่องทาง
     """
+    if not (LINE_CHANNEL_ACCESS_TOKEN or "").strip():
+        print("[line_bot] ❌ LINE_CHANNEL_ACCESS_TOKEN ว่าง — ส่ง reply ไม่ได้")
+        return False
+
     try:
         resp = line_api(REPLY_URL, make_reply_payload(reply_token, text))
         if resp.status_code == 200:
-            return
-        # invalid reply token = 400 "The reply token is invalid" / 429 throttled
+            print(f"[line_bot] ✅ reply ok (token {_token_tail()})")
+            return True
+        # invalid reply token = 400 "The reply token is invalid" / 401 token ผิด / 429 throttled
         print(f"[line_bot] reply failed ({resp.status_code}): {resp.text[:300]}")
-        if resp.status_code == 400 and user_id:
-            print("[line_bot] falling back to Push API (counts toward quota)")
-            line_api(PUSH_URL, make_push_payload(user_id, text))
     except Exception as e:
-        print(f"[line_bot] send failed: {e}")
+        print(f"[line_bot] reply exception: {e}")
+
+    # fallback: Push API (ต้องมี userId)
+    if not user_id or user_id == "unknown":
+        print("[line_bot] ไม่มี userId → ข้าม Push fallback")
+        return False
+    try:
+        print("[line_bot] falling back to Push API (counts toward quota)")
+        presp = line_api(PUSH_URL, make_push_payload(user_id, text))
+        if presp.status_code == 200:
+            print("[line_bot] ✅ push ok")
+            return True
+        print(f"[line_bot] push failed ({presp.status_code}): {presp.text[:300]}")
+    except Exception as e:
+        print(f"[line_bot] push exception: {e}")
+    return False
 
 
-def process_event(reply_token: str, user_id: str, text: str) -> None:
-    """ทำงานใน background — ประมวลผล LLM แล้วส่งคำตอบกลับ"""
+def show_loading(chat_id: str, seconds: int = 20) -> None:
+    """แสดงแอนิเมชัน "กำลังพิมพ์..." ให้ผู้ใช้เห็นทันทีระหว่างประมวลผล
+    ฟรี ไม่นับโควตาข้อความ (best-effort — ถ้าล้มเหลวไม่กระทบการตอบ)
+    """
+    if not chat_id or not (LINE_CHANNEL_ACCESS_TOKEN or "").strip():
+        return
+    try:
+        resp = line_api(LOADING_URL, {"chatId": chat_id, "loadingSeconds": seconds})
+        if resp.status_code != 200:
+            print(f"[line_bot] loading indicator failed ({resp.status_code}): {resp.text[:200]}")
+    except Exception as e:
+        print(f"[line_bot] loading indicator exception: {e}")
+
+
+def process_event(reply_token: str, user_id: str, text: str, chat_id: str = "") -> None:
+    """ประมวลผล LLM แล้วส่งคำตอบกลับ — เรียก *ภายใน request* ของ webhook
+
+    ⚠️ ห้ามย้ายไปทำหลัง response (BackgroundTasks/thread ที่ปล่อยให้ request จบก่อน)
+    เพราะ Cloud Run โหมดประหยัด (--cpu-throttling, default) จะให้ CPU "เฉพาะตอน
+    มี request ค้างอยู่" — งานที่ทำหลังตอบ webhook จะถูกอด CPU → บอทเงียบ
+    """
+    t0 = time.time()
     session_id = f"line:{user_id}"
-    answer = answer_text(session_id, text)
-    send_reply(reply_token, user_id, answer)
+    print(f"[line_bot] ▶ process_event user={user_id} len={len(text)} text={text[:60]!r}")
+    show_loading(chat_id or user_id)
+    try:
+        answer = answer_text(session_id, text)
+    except Exception as e:
+        print(f"[line_bot] ❌ answer_text หลุด exception: {e}")
+        answer = "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้งครับ"
+    print(f"[line_bot] ⏱ agent ใช้เวลา {time.time() - t0:.1f}s → กำลังส่ง reply")
+    ok = send_reply(reply_token, user_id, answer)
+    print(f"[line_bot] ■ process_event จบ ok={ok} รวม {time.time() - t0:.1f}s")
+
+
+# --- กัน LINE retry ซ้ำ (LINE ส่ง event เดิมซ้ำเมื่อ webhook ตอบช้า) ---
+_seen_ids: dict[str, float] = {}
+_seen_lock = threading.Lock()
+_SEEN_TTL = 600  # เก็บ eventId 10 นาที
+
+
+def _already_seen(event_id: str) -> bool:
+    if not event_id:
+        return False
+    now = time.time()
+    with _seen_lock:
+        for k, ts in list(_seen_ids.items()):
+            if now - ts > _SEEN_TTL:
+                del _seen_ids[k]
+        if event_id in _seen_ids:
+            return True
+        _seen_ids[event_id] = now
+        return False
 
 
 @line_router.post("/webhook")
-async def line_webhook(request: Request, background_tasks: BackgroundTasks):
+async def line_webhook(request: Request):
     body_bytes = await request.body()
 
     # ตรวจ signature (บังคับเมื่อตั้งค่า secret แล้ว)
@@ -154,36 +240,91 @@ async def line_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception:
         return JSONResponse({"error": "bad json"}, status_code=400)
 
-    # สำคัญ: LINE webhook timeout = 2 วินาที — ต้อง return 200 ทันที
-    # แล้วค่อยประมวลผล LLM (5-30 วิ) ใน background
-    for event in payload.get("events", []):
-        if event.get("type") not in ("message", "postback"):
+    # ประมวลผล "ภายใน request นี้" (ไม่ใช่หลัง response)
+    # เหตุผล: Cloud Run default = --cpu-throttling → ให้ CPU เฉพาะตอนมี request ค้างอยู่
+    #         ถ้าตอบ 200 แล้วค่อยทำต่อ (BackgroundTasks/thread) งานจะถูกอด CPU → บอทเงียบ
+    # ต้นทุน: webhook ตอบช้า (วินาที) — LINE อาจส่ง event เดิมซ้ำ จึงกันด้วย webhookEventId
+    #        และใช้ run_in_threadpool เพื่อไม่ให้บล็อก event loop ของ server
+    events = payload.get("events", [])
+    print(f"[line_bot] webhook events={len(events)}")
+    for event in events:
+        etype = event.get("type")
+        if etype not in ("message", "postback"):
+            print(f"[line_bot] ข้าม event type={etype}")
+            continue
+        if _already_seen(event.get("webhookEventId", "")):
+            print("[line_bot] ข้าม event ซ้ำ (retry)")
             continue
         reply_token = event.get("replyToken")
         if not reply_token:
+            print("[line_bot] ไม่มี replyToken — ข้าม")
             continue
 
         # ข้อความจากผู้ใช้
         msg = event.get("message", {})
-        text = msg.get("text", "") if event.get("type") == "message" else event.get("postback", {}).get("data", "")
+        text = msg.get("text", "") if etype == "message" else event.get("postback", {}).get("data", "")
         if not text:
             text = "ขออภัยครับ ผมรองรับข้อความตัวอักษรเท่านั้นครับ"
 
-        user_id = event.get("source", {}).get("userId", "unknown")
-        background_tasks.add_task(process_event, reply_token, user_id, text)
+        source = event.get("source", {})
+        user_id = source.get("userId", "unknown")
+        chat_id = (
+            source.get("userId")
+            or source.get("groupId")
+            or source.get("roomId")
+            or ""
+        )
+        print(f"[line_bot] ประมวลผลใน request: user={user_id} text={text[:60]!r}")
+        try:
+            await run_in_threadpool(process_event, reply_token, user_id, text, chat_id)
+        except Exception as e:
+            # ต้องไม่ทำให้ webhook ล้ม — LINE ต้องได้ 200 เสมอ
+            print(f"[line_bot] ❌ process_event ล้มเหลว: {e}")
 
-    # LINE ต้องได้ 200 เสมอ ไม่งั้นจะ retry
     return JSONResponse({"ok": True})
 
 
 @line_router.get("/health")
 def line_health():
     import db_sync
+    token = (LINE_CHANNEL_ACCESS_TOKEN or "").strip()
+    secret = (LINE_CHANNEL_SECRET or "").strip()
     return {
         "ok": True,
-        "configured": bool(LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET),
+        "configured": bool(token and secret),
+        "token_set": bool(token),
+        "secret_set": bool(secret),
+        "token_len": len(token),
+        "secret_len": len(secret),
+        "token_tail": _token_tail(),
         "db_ready": db_sync.is_ready(),
     }
+
+
+@line_router.get("/selftest")
+def line_selftest():
+    """ตรวจว่า access token ใช้ได้จริงไหม — เรียก GET /v2/bot/info ของ LINE
+    เปิดจากเบราว์เซอร์ได้เลย: https://<cloud-run-url>/line/selftest
+    """
+    token = (LINE_CHANNEL_ACCESS_TOKEN or "").strip()
+    if not token:
+        return JSONResponse({"ok": False, "error": "LINE_CHANNEL_ACCESS_TOKEN ว่าง"})
+    try:
+        resp = httpx.get(
+            BOT_INFO_URL,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"เรียก LINE ไม่ได้: {e}"})
+    return JSONResponse(
+        {
+            "ok": resp.status_code == 200,
+            "status": resp.status_code,
+            "token_tail": _token_tail(),
+            "body": resp.text[:500],
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -134,16 +134,46 @@
 # - ถ้า BigQuery ใช้ไม่ได้ ก็ข้ามไปเฉยๆ ไม่กระทบผู้ใช้
 #
 # LINE webhook หมายเหตุ:
-# - webhook ตอบ 200 ทันที แล้วประมวลผล LLM ใน background (LINE timeout = 2 วิ)
-# - ใช้ Reply API (ฟรี ไม่นับ quota) ถ้า token หมดอายุจะ fallback ไป Push API (นับ quota)
+# - webhook ประมวลผล LLM "ภายใน request" (await run_in_threadpool) แล้วจึงตอบ 200
+#   (ห้ามย้ายไปทำหลัง response — ดูข้อ ⚠️ ด้านล่าง)
+#   (LINE timeout สั้น)
+# - ใช้ Reply API (ฟรี ไม่นับ quota) ถ้า token ใช้ไม่ได้ → fallback ไป Push API (นับ quota)
 # - ใน LINE Developers Console: Webhook URL = https://<cloud-run-url>/line/webhook
 #   ปิด auto-reply/greeting ของ Official Account และอย่าเปิด "Use grouped responses"
+#
+# ⚠️ ใช้ --cpu-throttling (default, ประหยัดสุด) ได้ — ห้ามย้ายงานตอบกลับไปทำ "หลัง" response
+#   สาเหตุบั๊กเดิม: webhook ตอบ 200 แล้วใช้ BackgroundTasks/thread ทำงานต่อ → Cloud Run
+#   โหมดประหยัดให้ CPU เฉพาะตอนมี request ค้าง → งานถูกอด CPU → บอทเงียบ
+#   แก้แล้ว: src/line_bot.py ประมวลผล "ภายใน request" (await run_in_threadpool) →
+#   webhook ตอบช้าลง (วินาที) แต่ CPU ยังอยู่ครบ → reply ออกเสมอ + ไม่มีค่าใช้จ่ายเพิ่ม
+#
+# - ไม่ต้องใช้ --no-cpu-throttling เลย (โหมดนั้นจะจ่าย CPU ตลอดเวลาแม้ idle)
+#
+# - --min-instances 0 (แนะนำ, ประหยัด): cold start เร็วขึ้นแล้วเพราะ embedding model
+#   ถูกฝังใน image (Dockerfile pre-download) → ไม่ต้องโหลด ~470MB จาก Hugging Face
+#   ครั้งแรกหลัง instance ถูกเก็บ จะช้า ~10-30 วิ (token อายุ ~1 นาที ยังทัน)
+#   ถ้าต้องการเร็วทุกครั้งตลอดเวลา: --min-instances 1 (มีค่าใช้จ่าย idle rate แม้ CPU ถูก throttle)
+#
+# --- debug LINE (เปิดจากเบราว์เซอร์ได้เลย) ---
+#   GET /line/health    → {"configured":true,"token_set":true,"secret_set":true,
+#                          "token_len":..., "token_tail":"...xxxx", "db_ready":true}
+#                        ถ้า token_set=false → token ใน secret env_law หาย/ชื่อผิด
+#   GET /line/selftest  → เรียก LINE GET /v2/bot/info ด้วย token จริง
+#                        ok=true = token ใช้ได้, status=401 = token ผิด/ถูกเพิกถอน
+# - อ่าน log แล้วดูบรรทัด [line_bot]:
+#     "webhook events=1"                 = handler รับ event แล้ว
+#     "ประมวลผลใน request: user=..."     = เริ่มทำงานภายใน request
+#     "▶ process_event ..."              = เรียก agent (ถ้าไม่มี = งานไม่ได้เริ่ม)
+#     "⏱ agent ใช้เวลา Ns"                = LLM ตอบเสร็จ
+#     "✅ reply ok" / "reply failed (400): ..." = ผลการส่งกลับ
+#   อาการ "webhook 200 แต่ log ไม่มี [line_bot] เลย" = ไม่มี event ถูกส่งมา
+#   (LINE Console → Messaging API → ตรวจว่า webhook เปิด + URL ถูก)
 #
 # ============================================================
 # เปิดช่องทาง LINE / Discord เพิ่ม (ไม่ต้องเขียน endpoint ใหม่)
 # ============================================================
 # endpoint ที่มีอยู่แล้ว:
-#   POST /line/webhook      → mount อัตโนมัติใน src/server.py (มี signature check + background task)
+#   POST /line/webhook      → mount อัตโนมัติใน src/server.py (signature check + ประมวลผลใน request)
 #   GET  /line/health       → {"ok":true,"configured":true} เมื่อใส่ token+secret แล้ว
 #   Discord                 → ไม่ใช้ webhook, ใช้ gateway websocket (รันแยก process)
 #
@@ -151,14 +181,17 @@
 #      gcloud run services update rag-law --region asia-southeast1 --project rag-law-509304 \
 #        --update-env-vars "LINE_CHANNEL_ACCESS_TOKEN=xxx,LINE_CHANNEL_SECRET=yyy"
 #    หรือเพิ่ม 2 บรรทัดนี้ใน secret env_law แล้ว redeploy
+#    ⚠️ ถ้า secret mapping เป็น :latest ให้ pin version (--update-secrets "ENV_LAW=env_law:3")
+#       หรือเติม dummy env เพื่อบังคับให้สร้าง revision ใหม่ (ไม่งั้น revision ไม่ถูก trigger)
 #    ตรวจ: curl https://<cloud-run-url>/line/health  → configured: true
 #    หมายเหตุ: ถ้าใช้ min-instances=0 ตอนกด Verify ใน LINE Console ครั้งแรกอาจ timeout
-#    (cold start + โหลด embedding) — กด Verify ซ้ำอีกครั้งพอ
+#    (cold start) — กด Verify ซ้ำอีกครั้งพอ (หรือยิง GET /ping ปลุก instance ก่อน)
 #
 # 2) Discord — รันเป็น Cloud Run service ที่ 2 (บอทต้องออนไลน์ตลอด ไม่ scale to zero):
 #      gcloud run deploy rag-law-discord --source . --region asia-southeast1 --project rag-law-509304 \
 #        --command python --args src/discord_bot.py \
 #        --min-instances 1 --max-instances 1 --no-cpu-throttling \
+#        # (Discord ใช้ websocket ต่อเนื่อง ต้องมี CPU ตลอด — จำเป็นสำหรับ service นี้)
 #        --memory 2Gi --cpu 1 --port 8080 --allow-unauthenticated \
 #        --set-env-vars "DISCORD_HEALTH_PORT=8080,VECTOR_STORE=pinecone,LLM_PROVIDER=groq" \
 #        --set-secrets "ENV_LAW=env_law:latest"

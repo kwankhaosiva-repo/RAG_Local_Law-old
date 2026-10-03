@@ -28,8 +28,18 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# --- ฝัง embedding model เข้า image (HF cache) ---
+# ทำไม: ถ้าไม่ฝัง ตอน cold start container ต้องโหลด ~470MB จาก Hugging Face
+#       ซึ่งใช้เวลา ~1-2 นาที — นานกว่า reply token ของ LINE (~1 นาที)
+#       ทำให้ข้อความแรกของผู้ใช้ตอบไม่ทัน (บอทเงียบ)
+#       ฝังไว้ใน image → cold start เหลือแค่ import + โหลดจาก disk (~10-30 วิ)
+#       ทำให้ใช้ --min-instances 0 (ไม่เสียเงินช่วง idle) ได้โดยไม่ทรมานผู้ใช้มาก
+ARG EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')"
+
 # Copy source
 COPY src/ ./src/
+COPY docs/ ./docs/
 COPY .env_example ./
 
 # chroma_db (vector index) ควร mount เป็น volume ตอนรัน:
