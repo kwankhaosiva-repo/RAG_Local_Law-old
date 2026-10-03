@@ -101,22 +101,140 @@ class Retriever:
             return fragment if len(fragment) >= 4 else None
         return None
 
-    def retrieve(self, query, filter_metadata=None):
+    @staticmethod
+    def normalize_section_digits(query: str) -> list[str]:
+        """สร้าง variant ของเลขมาตราทั้งเลขอารบิกและเลขไทย"""
+        import re
+        arabic_to_thai = str.maketrans("0123456789", "๐๑๒๓๔๕๖๗๘๙")
+        thai_to_arabic = str.maketrans("๐๑๒๓๔๕๖๗๘๙", "0123456789")
+        extra = []
+        for num in re.findall(r'(?:มาตรา|ม\.)\s*(\d+)', query):
+            t_num = num.translate(arabic_to_thai)
+            extra.append(f"มาตรา {t_num}")
+        for num in re.findall(r'(?:มาตรา|ม\.)\s*([๐-๙]+)', query):
+            a_num = num.translate(thai_to_arabic)
+            extra.append(f"มาตรา {a_num}")
+        return extra
+
+    @staticmethod
+    def expand_legal_phrases(query: str) -> list[str]:
+        """สกัดถ้อยคำตัวบทกฎหมายทางการ (Statutory Phrases) จากภาษาเล่าเรื่องของผู้ใช้"""
+        q = query.lower()
+        triggers = [
+            {
+                "keywords": [("ข่มขู่", "สัญญา"), ("ข่มขู่", "เซ็น"), ("บังคับ", "สัญญา"), ("บังคับ", "เซ็น"),
+                             ("ข่มขู่", "ครอบครัว"), ("ข่มขู่", "สมยอม"), ("ข่มขู่", "ยอม"), ("บังคับ", "ข่มขู่")],
+                "phrases": [
+                    "การแสดงเจตนาเพราะถูกข่มขู่เป็นโมฆียะ",
+                    "การข่มขู่ย่อมทำให้การแสดงเจตนาเป็นโมฆียะแม้บุคคลภายนอกจะเป็นผู้ข่มขู่",
+                    "ข่มขืนใจผู้อื่นให้กระทำการใด ไม่กระทำการใด หรือจำยอมต่อสิ่งใด",
+                    "กรรโชกทรัพย์ ขู่เข็ญว่าจะทำอันตรายต่อชีวิต ร่างกาย เสรีภาพ",
+                ]
+            },
+            {
+                "keywords": [("หลอก", "สัญญา"), ("โกง", "สัญญา"), ("หลอก", "เซ็น"), ("กลฉ้อฉล",), ("ฉ้อฉล",), ("หลอกลวง",), ("ฉ้อโกง",)],
+                "phrases": [
+                    "กลฉ้อฉล สำคัญผิดในสิ่งซึ่งเป็นสาระสำคัญแห่งนิติกรรม เป็นโมฆะ โมฆียะ",
+                    "หลอกลวงผู้อื่นด้วยการแสดงข้อความอันเป็นเท็จ ความผิดฐานฉ้อโกง",
+                ]
+            },
+            {
+                "keywords": [("ครอบครองปรปักษ์",), ("แย่ง", "ที่ดิน"), ("บุกรุก", "ที่ดิน")],
+                "phrases": [
+                    "ครอบครองปรปักษ์ อสังหาริมทรัพย์ สงบ เปิดเผย เจตนาเป็นเจ้าของ",
+                    "เข้าไปในอสังหาริมทรัพย์ของผู้อื่นเพื่อครอบครอง บุกรุก",
+                ]
+            },
+            {
+                "keywords": [("เลิกจ้าง",), ("ไล่ออก",), ("ค่าชดเชย", "งาน"), ("ไม่จ่ายค่าจ้าง",)],
+                "phrases": [
+                    "บอกกล่าวล่วงหน้า ค่าชดเชย การเลิกจ้าง พ.ร.บ.คุ้มครองแรงงาน",
+                    "นายจ้างเลิกจ้างโดยไม่มีความผิด จ่ายค่าชดเชย",
+                ]
+            },
+            {
+                "keywords": [("กู้ยืม",), ("ยืมเงิน",), ("ทวงหนี้",), ("ดอกเบี้ยเกิน",)],
+                "phrases": [
+                    "การกู้ยืมเงิน มีหลักฐานแห่งการกู้ยืมเป็นหนังสือ ป.พ.พ. มาตรา 653",
+                    "ทวงถามหนี้ ข่มขู่ ใช้ความรุนแรง ดอกเบี้ยเกินอัตรา",
+                ]
+            },
+            {
+                "keywords": [("หมิ่นประมาท",), ("ด่า", "เฟซ"), ("โพสต์", "ด่า"), ("ประจาน",)],
+                "phrases": [
+                    "ใส่ความผู้อื่นต่อบุคคลที่สาม หมิ่นประมาท โดยการโฆษณา",
+                    "นำเข้าสู่ระบบคอมพิวเตอร์ซึ่งข้อมูลคอมพิวเตอร์อันเป็นเท็จ",
+                ]
+            },
+            {
+                "keywords": [("ละเมิด",), ("รถชน",), ("ทำร้ายร่างกาย",), ("เรียกค่าเสียหาย",)],
+                "phrases": [
+                    "จงใจหรือประมาทเลินเล่อ ทำต่อบุคคลอื่นโดยผิดกฎหมาย ละเมิด ค่าสินไหมทดแทน",
+                    "ทำร้ายผู้อื่นจนเป็นเหตุให้เกิดอันตรายแก่กายหรือจิตใจ",
+                ]
+            },
+            {
+                "keywords": [("มรดก",), ("พินัยกรรม",), ("ทายาท",)],
+                "phrases": [
+                    "ทายาทโดยธรรม ลำดับทายาท กองมรดก การแบ่งมรดก พินัยกรรม",
+                ]
+            },
+        ]
+        matched_phrases = []
+        for item in triggers:
+            for kw_group in item["keywords"]:
+                if all(kw in q for kw in kw_group):
+                    for p in item["phrases"]:
+                        if p not in matched_phrases:
+                            matched_phrases.append(p)
+                    break
+        return matched_phrases
+
+    def retrieve(self, query, filter_metadata=None, additional_queries=None):
         """
-        Retrieves documents using True Hybrid Search (RRF with Vector + Thai BM25).
+        Retrieves documents using Multi-Aspect Hybrid Search (RRF with Vector + Statutory Concept Injection + BM25).
         `query` ควรเป็น standalone query (ถ้ามีประวัติแชท ให้ rewrite ก่อนส่งเข้ามา)
         """
         search_query = query
 
-        # 1. Semantic Search (Vector) - ดึงฐานข้อมูลมาเยอะขึ้นเพื่อให้แน่ใจว่าไม่พลาดมาตราสำคัญ
-        core_vector_docs = self.core_db.similarity_search(search_query, k=300, filter=filter_metadata)
+        # 1. รวบรวม Search Queries (Original + Statutory Phrase Expansion + Digits)
+        extra_queries = list(additional_queries or [])
+        extra_queries.extend(self.normalize_section_digits(query))
+        extra_queries.extend(self.expand_legal_phrases(query))
+        clean_extra = []
+        for eq in extra_queries:
+            eq_s = eq.strip()
+            if eq_s and eq_s != query and eq_s not in clean_extra:
+                clean_extra.append(eq_s)
+
+        # 2. Semantic Search (Vector) - ดึง Primary Query ก่อน
+        core_vector_docs = self.core_db.similarity_search(search_query, k=200, filter=filter_metadata)
         recent_vector_docs = self.recent_db.similarity_search(search_query, k=50, filter=filter_metadata)
         all_vector_docs = core_vector_docs + recent_vector_docs
+
+        # ถ้ามี Statutory Phrase Expansion ให้ค้นหาและสอดแทรก (Interleave) เอกสารเฉพาะทาง
+        if clean_extra:
+            aspect_doc_lists = []
+            for eq in clean_extra[:4]:  # จำกัดไม่เกิน 4 phrases เพื่อความเร็ว
+                docs = self.core_db.similarity_search(eq, k=15, filter=filter_metadata)
+                if docs:
+                    aspect_doc_lists.append(docs)
+            
+            if aspect_doc_lists:
+                seen_c = {d.page_content for d in all_vector_docs}
+                injected = []
+                # ดึง top 2 ของแต่ละ aspect มาสอดแทรกไว้ลำดับต้นๆ เพื่อการันตีว่าตัวบทกฎหมายหลักติดโผ
+                for alist in aspect_doc_lists:
+                    for d in alist[:2]:
+                        if d.page_content not in seen_c:
+                            seen_c.add(d.page_content)
+                            injected.append(d)
+                all_vector_docs = injected + all_vector_docs
 
         if not all_vector_docs:
             return []
             
-        # 1.5 Clean Up IAPP natural_text before BM25 processes it
+        # 2.5 Clean Up IAPP natural_text before BM25 processes it
         import json
         for doc in all_vector_docs:
             if doc.page_content.strip().startswith('{"natural_text"'):
@@ -126,15 +244,13 @@ class Retriever:
                 except Exception:
                     pass
 
-        # 2. Extract Target Law for Hard Filtering (generic regex-based detection)
+        # 3. Extract Target Law for Hard Filtering (generic regex-based detection)
         target_law = self.detect_target_law(query)
 
         if target_law:
-            # เผื่อ regex จับ fragment ยาวเกิน: ใช้ fuzzy contains ทั้งสองทาง
             def law_matches(title):
                 return target_law in title or title in target_law
             strict_matched_docs = [doc for doc in all_vector_docs if law_matches(doc.metadata.get('title', ''))]
-            # ถ้ามีเอกสารที่ตรงกับชื่อกฎหมายที่ถามจริงๆ ให้ใช้เฉพาะกลุ่มนี้เท่านั้น ห้ามเอาขยะมาปน
             if len(strict_matched_docs) > 0:
                 all_vector_docs = strict_matched_docs
 

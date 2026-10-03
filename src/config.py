@@ -131,7 +131,7 @@ PINECONE_NAMESPACE_RECENT = os.environ.get("PINECONE_NAMESPACE_RECENT", "recent_
 # Retrieval
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
-RETRIEVAL_K = 5
+RETRIEVAL_K = int(os.environ.get("RETRIEVAL_K", "6"))
 
 # น้ำหนัก RRF ระหว่าง vector (ความเข้าใจความหมาย) กับ BM25 (keyword ตรงเป๊ะ)
 # vector > BM25 เพราะ BM25 ชอบถูกคำกว้างหลอก เช่น ถามเรื่อง "ใช้ครอบครัวเป็นตัวประกัน"
