@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Kanit:wght@400;500;600;700&family=Prompt:wght@400;500;600;700&family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   :root {
     --navy-900: #0c1630;
@@ -158,7 +159,9 @@
     background: var(--bubble-bot-bg);
     border: 1px solid var(--border);
     color: var(--text-main); border-bottom-left-radius: 5px;
+    white-space: normal;
   }
+  #greetBubble { white-space: pre-wrap; }
   .meta { font-size: .68rem; color: var(--text-sub); margin-top: 5px; padding: 0 4px; display: flex; align-items: center; gap: 8px; }
   .copy-btn {
     background: none; border: none; color: var(--text-sub);
@@ -254,6 +257,45 @@
   .chip:hover { border-color: var(--gold); background: rgba(212,169,71,.08); }
   .chip:active { transform: scale(.97); }
   .chips.hidden { display: none; }
+
+  /* ---------- Action chips under bot bubbles ---------- */
+  .action-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .action-chip {
+    background: var(--chip-bg); border: 1px solid var(--border); color: var(--navy-600);
+    border-radius: 999px; padding: 4px 12px; font-size: .74rem; font-weight: 500;
+    cursor: pointer; font-family: inherit; transition: all .15s;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  [data-theme="dark"] .action-chip {
+    color: var(--gold-soft); border-color: rgba(212,169,71,.3);
+  }
+  .action-chip:hover {
+    background: rgba(212,169,71,.14); border-color: var(--gold);
+    transform: translateY(-1px);
+  }
+  .action-chip:active { transform: scale(.96); }
+
+  /* ---------- Responsive Markdown Tables ---------- */
+  .table-responsive {
+    width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    margin: 10px 0; border-radius: 10px; border: 1px solid var(--border);
+  }
+  .bubble table {
+    width: 100%; border-collapse: collapse; font-size: .84rem; text-align: left;
+  }
+  .bubble th, .bubble td {
+    border: 1px solid var(--border); padding: 7px 10px;
+  }
+  .bubble th {
+    background: rgba(20,35,71,.06); font-weight: 600; color: var(--navy-700);
+  }
+  [data-theme="dark"] .bubble th {
+    background: rgba(255,255,255,.07); color: var(--gold-soft);
+  }
+  .bubble p { margin-bottom: 6px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble ul, .bubble ol { margin: 6px 0 6px 18px; }
+  .bubble li { margin-bottom: 3px; }
 
   /* ---------- Composer ---------- */
   form {
@@ -570,6 +612,10 @@ const I18N = {
     errRead: "อ่านไฟล์ไม่สำเร็จ",
     errImage: "ไฟล์นี้ไม่ใช่รูปภาพ",
     resetMsg: "เริ่มบทสนทนาใหม่แล้วครับ 🙏 มีคำถามกฎหมายอะไรถามได้เลยครับ",
+    actDetail: "📖 ดูรายละเอียดเชิงลึก",
+    actDetailPrompt: "ขอรายละเอียดเชิงลึกและตัวบทกฎหมายเพิ่มเติม",
+    actProcedure: "⚖️ ขั้นตอนทางคดี",
+    actProcedurePrompt: "ขั้นตอนการแจ้งความหรือดำเนินคดีต้องทำอย่างไรบ้าง",
   },
   en: {
     brandName: "Thai Legal Advisor",
@@ -624,6 +670,10 @@ const I18N = {
     errRead: "Could not read the file",
     errImage: "This file is not an image",
     resetMsg: "Started a new conversation 🙏 Go ahead and ask your legal question.",
+    actDetail: "📖 In-depth Details",
+    actDetailPrompt: "Please provide in-depth details and statutory provisions",
+    actProcedure: "⚖️ Legal Procedure",
+    actProcedurePrompt: "What are the legal steps for filing a complaint or pursuing this case?",
   },
 };
 
@@ -814,6 +864,32 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+if (typeof marked !== "undefined") {
+  marked.use({ gfm: true, breaks: true });
+}
+
+function renderMarkdown(text) {
+  if (typeof marked !== "undefined" && marked.parse) {
+    try {
+      let html = marked.parse(text);
+      // Wrap table elements in .table-responsive for mobile scroll
+      html = html.replace(/<table(\b[^>]*)>/gi, '<div class="table-responsive"><table$1>');
+      html = html.replace(/<\/table>/gi, '</table></div>');
+      return html;
+    } catch (e) {
+      console.warn("Markdown render error", e);
+    }
+  }
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+function submitPrompt(msg) {
+  if (!msg) return;
+  input.value = msg;
+  input.style.height = "auto";
+  form.requestSubmit();
+}
+
 // ---------- messages ----------
 function avatarEl(role) {
   const a = document.createElement("div");
@@ -837,11 +913,37 @@ function addMsg(role, text, sources) {
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.textContent = text;
+  if (role === "bot") {
+    bubble.innerHTML = renderMarkdown(text);
+  } else {
+    bubble.textContent = text;
+  }
   col.appendChild(bubble);
 
   if (role === "bot") {
     if (sources && sources.length) addSourceUI(col, bubble, text, sources);
+
+    // Interactive action chips under bot answers with sources
+    if (sources && sources.length) {
+      const actStrip = document.createElement("div");
+      actStrip.className = "action-strip";
+
+      const chipDetail = document.createElement("button");
+      chipDetail.className = "action-chip";
+      chipDetail.type = "button";
+      chipDetail.innerHTML = escapeHtml(t("actDetail"));
+      chipDetail.addEventListener("click", () => submitPrompt(t("actDetailPrompt")));
+
+      const chipProc = document.createElement("button");
+      chipProc.className = "action-chip";
+      chipProc.type = "button";
+      chipProc.innerHTML = escapeHtml(t("actProcedure"));
+      chipProc.addEventListener("click", () => submitPrompt(t("actProcedurePrompt")));
+
+      actStrip.append(chipDetail, chipProc);
+      col.appendChild(actStrip);
+    }
+
     const meta = document.createElement("div");
     meta.className = "meta";
     const copy = document.createElement("button");

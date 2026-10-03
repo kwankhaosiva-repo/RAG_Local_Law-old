@@ -120,19 +120,94 @@ def answer_text(session_id: str, text: str) -> str:
         return "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้งครับ"
 
 
+def clean_markdown_tables_for_line(text: str) -> str:
+    """แปลงตาราง Markdown (| col | col |) ให้เป็นข้อความแบบ Bullet สำหรับแสดงผลบน LINE สวยงาม"""
+    import re
+    lines = text.split("\n")
+    cleaned_lines = []
+    in_table = False
+    headers = []
+    
+    for line in lines:
+        stripped = line.strip()
+        # ตรวจว่าเป็นเส้นแบ่งตาราง เช่น |---|---|
+        if re.match(r"^\|?\s*[-:]+\s*\|[-:\|\s]*$", stripped):
+            in_table = True
+            continue
+        # แถวตาราง | col1 | col2 |
+        if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 3:
+            cols = [c.strip() for c in stripped.strip("|").split("|")]
+            if not in_table and not headers:
+                headers = cols
+                continue
+            in_table = True
+            if headers and len(headers) == len(cols):
+                card_items = [f"{h}: {c}" for h, c in zip(headers, cols) if c]
+                cleaned_lines.append("• " + " | ".join(card_items))
+            else:
+                cleaned_lines.append("• " + " - ".join(c for c in cols if c))
+            continue
+        else:
+            in_table = False
+            headers = []
+            cleaned_lines.append(line)
+            
+    return "\n".join(cleaned_lines)
+
+
+def make_quick_reply() -> dict:
+    """สร้างปุ่ม Quick Reply ลอยเหนือคีย์บอร์ดบน LINE (สำหรับขอรายละเอียดเชิงลึก หรือเริ่มเรื่องใหม่)"""
+    return {
+        "items": [
+            {
+                "type": "action",
+                "action": {
+                    "type": "message",
+                    "label": "📖 รายละเอียดเชิงลึก",
+                    "text": "ขอรายละเอียดเชิงลึกและตัวบทกฎหมายเพิ่มเติม",
+                },
+            },
+            {
+                "type": "action",
+                "action": {
+                    "type": "message",
+                    "label": "⚖️ ขั้นตอนทางคดี",
+                    "text": "ขั้นตอนการแจ้งความหรือดำเนินคดีต้องทำอย่างไรบ้าง",
+                },
+            },
+            {
+                "type": "action",
+                "action": {
+                    "type": "message",
+                    "label": "🔄 ถามเรื่องใหม่",
+                    "text": "/reset",
+                },
+            },
+        ]
+    }
+
+
 def make_reply_payload(reply_token: str, text: str) -> dict:
-    parts = split_message(text)
+    clean_text = clean_markdown_tables_for_line(text)
+    parts = split_message(clean_text)
+    messages = [{"type": "text", "text": p} for p in parts[:5]]
+    if messages:
+        messages[-1]["quickReply"] = make_quick_reply()
     return {
         "replyToken": reply_token,
-        "messages": [{"type": "text", "text": p} for p in parts[:5]],
+        "messages": messages,
     }
 
 
 def make_push_payload(user_id: str, text: str) -> dict:
-    parts = split_message(text)
+    clean_text = clean_markdown_tables_for_line(text)
+    parts = split_message(clean_text)
+    messages = [{"type": "text", "text": p} for p in parts[:5]]
+    if messages:
+        messages[-1]["quickReply"] = make_quick_reply()
     return {
         "to": user_id,
-        "messages": [{"type": "text", "text": p} for p in parts[:5]],
+        "messages": messages,
     }
 
 
