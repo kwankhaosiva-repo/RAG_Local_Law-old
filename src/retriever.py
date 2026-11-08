@@ -293,7 +293,8 @@ class Retriever:
         bm25_retriever = self._get_bm25_retriever(all_vector_docs)
         if bm25_retriever:
             bm25_retriever.k = len(all_vector_docs)
-            bm25_docs = bm25_retriever.invoke(query)
+            bm25_search_text = f"{query} " + " ".join(clean_extra[:4]) if clean_extra else query
+            bm25_docs = bm25_retriever.invoke(bm25_search_text)
             bm25_ranks = {doc.page_content: i for i, doc in enumerate(bm25_docs)}
         else:
             bm25_ranks = vector_ranks

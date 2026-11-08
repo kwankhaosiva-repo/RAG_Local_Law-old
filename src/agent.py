@@ -12,6 +12,7 @@ warnings.filterwarnings("ignore")
 import os
 import sys
 import re
+import json
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,6 +36,7 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     intent: str
     standalone_question: str
+    legal_search_queries: list
     retrieved_docs: list
     generation: str
     sources: list
@@ -54,21 +56,24 @@ LEGAL_INTENT_PROMPT = """จำแนกประเภทข้อความ�
 
 คำตอบ:"""
 
-REWRITE_PROMPT = """คุณคือที่ปรึกษากฎหมายผู้เชี่ยวชาญ จงนำคำถามสุดท้ายของผู้ใช้และประวัติบทสนทนา มาเขียนเป็น "คำถามค้นหากฎหมายที่สมบูรณ์ในตัวเอง (Standalone Legal Question)"
-ข้อกำหนดสำคัญ:
-1. หากคำถามสุดท้ายเป็นการถามสั้นๆ หรือถามต่อยอด (เช่น "ผิดมาตราอะไร", "มีโทษอย่างไร", "อายุความกี่ปี", "ฟ้องได้ไหม", "ต้องทำยังไงบ้าง", "มีขั้นตอนอะไรบ้าง", "ใช้เอกสารอะไร"):
-   - ให้นำ "หัวข้อกฎหมายหรือข้อเท็จจริงของเหตุการณ์" (เช่น การทำพินัยกรรม, การซื้อคอนโดมือสอง, การบอกเลิกสัญญา, การดำเนินคดี) ที่เคยคุยกันมาประกอบเป็นคำถามเต็ม
-   - มุ่งเน้นค้นหาตัวบทกฎหมาย มาตรา ขั้นตอนปฏิบัติ และข้อกำหนดสำคัญที่เกี่ยวข้อง
-   - ห้ามจำกัดกรอบเฉพาะชื่อกฎหมายที่ผู้ช่วยเคยยกมาในเทิร์นก่อนหน้า เว้นแต่ผู้ใช้จะเป็นฝ่ายเจาะจงชื่อกฎหมายนั้นเอง
-2. ห้ามเพิ่มข้อมูลเท็จที่ไม่มีในบทสนทนา
-3. ตอบเฉพาะข้อความคำถามที่เขียนใหม่เท่านั้น ไม่ต้องมีคำอธิบาย
+LEGAL_TRANSFORM_PROMPT = """คุณคือผู้เชี่ยวชาญด้านกฎหมายไทยและระบบสืบค้นตัวบท (Thai Legal Analyst & Query Transformer)
+หน้าที่ของคุณคือแปลง "คำถาม ปัญหา หรือสถานการณ์ของผู้ใช้" (ซึ่งมักใช้ภาษาพูดทั่วไป คำสแลง หรือคำกำกวม เช่น เต๊นท์รถ, ย้อมแมว, คอนโด, พินัยกรรม, ข้างบ้านเปิดเพลงเสียงดัง, ช่างทิ้งงาน, แฟนไม่คืนทองหมั้น)
+ให้เป็น "คำถามทางการที่สมบูรณ์" และ "ถ้อยคำตัวบทกฎหมายไทยสำหรับค้นหาในฐานข้อมูลกฎหมาย (Statutory Search Phrases)"
 
-บทสนทนา:
+บทสนทนาก่อนหน้า (ถ้ามี):
 {conversation}
 
-คำถามสุดท้าย: "{question}"
+ข้อความล่าสุดของผู้ใช้: "{question}"
 
-คำถามที่เขียนใหม่:"""
+จงตอบในรูปแบบ JSON เท่านั้น (ห้ามมีคำอธิบายอื่นนอกเหนือจาก JSON):
+{{
+  "standalone_question": "คำถามที่เรียบเรียงใหม่ให้ชัดเจน ครบถ้วน ระบุประเด็นข้อพิพาทหรือสิทธิหน้าที่",
+  "search_queries": [
+    "ชื่อกฎหมายฉบับหลัก + มาตราสำคัญ หรือชื่อ พ.ร.บ. เฉพาะ (เช่น ประมวลกฎหมายแพ่งและพาณิชย์ หรือ ประมวลกฎหมายอาญา หรือ พระราชบัญญัติอาคารชุด)",
+    "ถ้อยคำสำคัญทางการตามองค์ประกอบกฎหมายและตัวบท (เช่น สัญญาซื้อขาย ความรับผิดเพื่อชำรุดบกพร่อง สิทธิบอกเลิกสัญญา หรือ ความผิดฐานส่งเสียงอื้ออึงเดือดร้อนรำคาญ)"
+  ]
+}}
+"""
 
 GRADE_PROMPT = """You are a grader checking whether retrieved legal documents are useful for answering the user's question.
 
@@ -116,7 +121,7 @@ class LegalAgent:
         if self._rewrite_chain is None:
             from langchain_core.output_parsers import StrOutputParser
             self._rewrite_chain = (
-                ChatPromptTemplate.from_template(REWRITE_PROMPT) | self.llm | StrOutputParser()
+                ChatPromptTemplate.from_template(LEGAL_TRANSFORM_PROMPT) | self.llm | StrOutputParser()
             )
         return self._rewrite_chain
 
@@ -192,25 +197,48 @@ class LegalAgent:
         return {"intent": intent}
 
     def _rewrite_query(self, state):
-        question = state["messages"][-1].content
+        question = (state["messages"][-1].content or "").strip()
+        conversation = self._conversation_text(state) if len(state["messages"]) > 1 else "ไม่มี (คำถามเทิร์นแรก)"
         standalone = question
-        # Rewrite เฉพาะเมื่อมีประวัติก่อนหน้า (multi-turn) — เทิร์นแรกใช้คำถามตรงๆ
-        if len(state["messages"]) > 1:
-            try:
-                rewritten = self._get_rewrite_chain().invoke({
-                    "conversation": self._conversation_text(state),
-                    "question": question,
-                }).strip()
-                if rewritten:
-                    standalone = rewritten
-            except Exception:
-                pass
-        return {"standalone_question": standalone}
+        legal_search_queries = []
+
+        try:
+            raw_output = self._get_rewrite_chain().invoke({
+                "conversation": conversation,
+                "question": question,
+            }).strip()
+
+            # สกัด JSON block จาก markdown หรือ raw text
+            json_str = raw_output
+            if "```" in raw_output:
+                m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_output, re.DOTALL)
+                if m:
+                    json_str = m.group(1)
+            else:
+                m = re.search(r"(\{.*\})", raw_output, re.DOTALL)
+                if m:
+                    json_str = m.group(1)
+
+            data = json.loads(json_str)
+            if isinstance(data, dict):
+                standalone = data.get("standalone_question") or question
+                queries = data.get("search_queries") or []
+                if isinstance(queries, list):
+                    legal_search_queries = [str(q).strip() for q in queries if str(q).strip()]
+        except Exception:
+            standalone = question
+            legal_search_queries = []
+
+        return {
+            "standalone_question": standalone,
+            "legal_search_queries": legal_search_queries,
+        }
 
     def _retrieve(self, state):
         standalone = state.get("standalone_question") or state["messages"][-1].content
+        additional = state.get("legal_search_queries") or []
         try:
-            docs = self.retriever.retrieve(standalone)
+            docs = self.retriever.retrieve(standalone, additional_queries=additional)
         except Exception:
             docs = []
         return {"retrieved_docs": docs}
